@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="styles.css">
+  <title>Enhanced Side Squat Tracker</title>
+</head>
+<body>
+  <div id="video-container">
+    <video id="video" playsinline autoplay muted></video>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div id="controls">
+    <button id="resetBtn">Reset Counter</button>
+    <button id="toggleDebugBtn">Toggle Debug</button>
+  </div>
+
+  <div id="counter">Reps: 0</div>
+  <div id="feedback">Initializing... Please stand sideways to the camera</div>
+  <div id="debug"></div>
+  <div id="status" class="status-indicator status-standing">STANDING</div>
+
+  <!-- MediaPipe Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.1/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.1/camera_utils.js"></script>
+  <script src="squat.js"></script>
+
+</body>
+</html>

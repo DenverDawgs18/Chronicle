@@ -1,0 +1,96 @@
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background: #000;
+      overflow: hidden;
+    }
+
+    #video-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    video, canvas {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      max-width: 100%;
+      max-height: 100%;
+    }
+
+    #counter, #feedback, #debug, #controls {
+      position: fixed;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      border-radius: 12px;
+      padding: 15px;
+    }
+
+    #counter {
+      top: 20px;
+      right: 20px;
+      font-size: 2.5em;
+      min-width: 150px;
+    }
+
+    #feedback {
+      bottom: 20px;
+      left: 20px;
+      right: 20px;
+      font-size: 1.2em;
+      text-align: center;
+    }
+
+    #debug {
+      top: 20px;
+      left: 20px;
+      font-family: monospace;
+      font-size: 12px;
+      max-width: 320px;
+      white-space: pre-line;
+      display: none;
+      color: #00ff00;
+    }
+
+    #controls {
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    button {
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      border: 2px solid #00ff00;
+      padding: 10px 20px;
+      margin: 0 5px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:hover {
+      background: rgba(0,255,0,0.2);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .status-indicator {
+      position: fixed;
+      top: 120px;
+      right: 20px;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .status-standing { background: rgba(0, 255, 0, 0.3); color: #00ff00; }
+    .status-descending { background: rgba(255, 165, 0, 0.3); color: #ffa500; }
+    .status-ascending { background: rgba(0, 150, 255, 0.3); color: #0096ff; }
