@@ -1,14 +1,17 @@
 let testMode = false;  
+let text = false;
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const counterEl = document.getElementById('counter');
 const feedbackEl = document.getElementById('feedback');
+const msgEl = document.getElementById('msg');
 const debugEl = document.getElementById('debug');
 const statusEl = document.getElementById('status');
 const resetBtn = document.getElementById('resetBtn');
 const toggleDebugBtn = document.getElementById('toggleDebugBtn');
 const simulateBtn = document.getElementById('simulateBtn');
+const textBtn = document.getElementById('text');
 
 let repCount = 0;
 let state = 'standing';
@@ -30,6 +33,17 @@ const MIN_DEPTH = 0.002;
 const GOOD_DEPTH = 0.15;
 const ASCENT_THRESHOLD = 0.035;
 const STABILITY_FRAMES = 3;
+
+textBtn.addEventListener('click', () => {
+  if (text === false) {
+    text = true;
+    textBtn.textContent = 'Turn Audio On';
+  }
+  else { 
+    text = false; 
+    textBtn.textContent = 'Turn Audio Off';
+  }
+})
 
 resetBtn.addEventListener('click', () => {
   repCount = 0;
@@ -131,6 +145,7 @@ function detectFacingDirection(landmarks) {
   return leftAvgZ < rightAvgZ ? 'left' : 'right';
 }
 
+let totalMsg = '';
 function detectSquat(landmarks) {
   const direction = detectFacingDirection(landmarks);
   if (!direction) return;
@@ -202,20 +217,21 @@ Stable Frames: ${stableFrameCount}`;
       repCount++;
       
       const depthGood = currentDepth >= GOOD_DEPTH;
-      const depthMsg = depthGood ? "Excellent depth" : "Good rep - try going deeper";
-      const msg = `${depthMsg}! Rep ${repCount}`;
-
-      // Voice feedback (only if not simulating to avoid spam)
-      if (!isSimulating) {
+      const depthMsg = depthGood ? "Excellent depth" : "Get deeper";
+      const msg = `Rep ${repCount} ${depthMsg}!`;
+      totalMsg = totalMsg + " " + msg;
+      console.log(totalMsg)
+      if (text === false){
         const utterance = new SpeechSynthesisUtterance(msg);
         utterance.rate = 1.0;
         utterance.pitch = 1.0;
         utterance.volume = 0.9;
-        speechSynthesis.speak(utterance);
+        speechSynthesis.speak(utterance);  
       }
 
+      msgEl.textContent = totalMsg;
       counterEl.textContent = `Reps: ${repCount}`;
-      feedbackEl.textContent = msg;
+
 
       // Reset for next rep
       updateStatus('standing');
@@ -300,23 +316,28 @@ function simulateSquat() {
     // Complete squat cycle every ~4 seconds (40 frames at 100ms intervals)
     const cycleProgress = (t % 40) / 40;
     let hipOffset = 0;
+    let kneeForward = 0;
 
     if (cycleProgress < 0.3) {
       // Descent phase (0-30% of cycle)
-      hipOffset = 0.12 * Math.sin((cycleProgress / 0.3) * Math.PI * 0.5);
+      const descentProgress = cycleProgress / 0.3;
+      hipOffset = 0.12 * Math.sin(descentProgress * Math.PI * 0.5);
+      kneeForward = 0.08 * Math.sin(descentProgress * Math.PI * 0.5); // Knees move forward during descent
     } else if (cycleProgress < 0.7) {
       // Bottom hold phase (30-70% of cycle)
       hipOffset = 0.12;
+      kneeForward = 0.08; // Max knee forward position
     } else {
       // Ascent phase (70-100% of cycle)
       const ascentProgress = (cycleProgress - 0.7) / 0.3;
       hipOffset = 0.12 * Math.cos(ascentProgress * Math.PI * 0.5);
+      kneeForward = 0.08 * Math.cos(ascentProgress * Math.PI * 0.5);
     }
 
     const baseHipY = 0.5;
     const fakeHipY = baseHipY + hipOffset;
 
-    // Create realistic landmark positions
+    // Create realistic landmark positions for sideways person
     const fakeLandmarks = [];
     
     // Initialize all positions to avoid undefined
@@ -324,15 +345,36 @@ function simulateSquat() {
       fakeLandmarks[i] = null;
     }
 
-    // Only set the landmarks we need
-    fakeLandmarks[11] = { x: 0.4, y: 0.35, z: 0, visibility: 1 }; // left shoulder
-    fakeLandmarks[12] = { x: 0.6, y: 0.35, z: 0.2, visibility: 1 }; // right shoulder
-    fakeLandmarks[23] = { x: 0.45, y: fakeHipY, z: 0, visibility: 1 }; // left hip
-    fakeLandmarks[24] = { x: 0.55, y: fakeHipY, z: 0.2, visibility: 1 }; // right hip
-    fakeLandmarks[25] = { x: 0.45, y: fakeHipY + 0.18 + hipOffset * 0.5, z: 0, visibility: 1 }; // left knee
-    fakeLandmarks[26] = { x: 0.55, y: fakeHipY + 0.18 + hipOffset * 0.5, z: 0.2, visibility: 1 }; // right knee
-    fakeLandmarks[27] = { x: 0.45, y: fakeHipY + 0.35, z: 0, visibility: 1 }; // left ankle
-    fakeLandmarks[28] = { x: 0.55, y: fakeHipY + 0.35, z: 0.2, visibility: 1 }; // right ankle
+    // Position person sideways (facing left) - stacked positioning with minimal separation
+    const frontZ = 0.05; // Front side (closer to camera)
+    const backZ = 0.15;  // Back side (further from camera)
+    
+    // Base X positions for a more stacked appearance
+    const frontX = 0.45;
+    const backX = 0.46; // Much closer together for stacked look
+    
+    // Shoulders - keep relatively stable during squat
+    fakeLandmarks[11] = { x: frontX, y: 0.35, z: frontZ, visibility: 1 }; // left shoulder
+    fakeLandmarks[12] = { x: backX, y: 0.35, z: backZ, visibility: 1 }; // right shoulder
+    
+    // Hips - main tracking points
+    fakeLandmarks[23] = { x: frontX, y: fakeHipY, z: frontZ, visibility: 1 }; // left hip
+    fakeLandmarks[24] = { x: backX, y: fakeHipY, z: backZ, visibility: 1 }; // right hip
+    
+    // Knees - move forward and down during squat
+    const kneeY = fakeHipY + 0.15 + hipOffset * 0.3; // Knees drop less than hips
+    fakeLandmarks[25] = { x: frontX + kneeForward, y: kneeY, z: frontZ, visibility: 1 }; // left knee
+    fakeLandmarks[26] = { x: backX + kneeForward, y: kneeY, z: backZ, visibility: 1 }; // right knee
+    
+    // Ankles - stay relatively planted
+    const ankleY = 0.85; // Fixed foot position
+    fakeLandmarks[27] = { x: frontX + kneeForward * 0.3, y: ankleY, z: frontZ, visibility: 1 }; // left ankle
+    fakeLandmarks[28] = { x: backX + kneeForward * 0.3, y: ankleY, z: backZ, visibility: 1 }; // right ankle
+
+    // Add some torso landmarks for better visualization
+    fakeLandmarks[0] = { x: frontX + 0.005, y: 0.15, z: frontZ + 0.02, visibility: 1 }; // nose
+    fakeLandmarks[15] = { x: frontX + 0.02, y: 0.18, z: frontZ, visibility: 1 }; // left eye
+    fakeLandmarks[16] = { x: frontX - 0.02, y: 0.18, z: frontZ, visibility: 1 }; // right eye
 
     const fakeResults = { poseLandmarks: fakeLandmarks };
 
