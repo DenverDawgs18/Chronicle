@@ -12,11 +12,14 @@
     <canvas id="canvas" width="640" height="480"></canvas>
   </div>
 
-  <div id="controls">
-    <button id="resetBtn">Reset Counter</button>
-    <button id="toggleDebugBtn">Toggle Debug</button>
-    <button id="simulateBtn" class="simulate-btn">Simulate Squat</button>
-    <button id="text">Turn Audio Off</button>
+  <div id="top-ui">
+    <div id="controls">
+      <button id="resetBtn">Reset Counter</button>
+      <button id="toggleDebugBtn">Toggle Debug</button>
+      <button id="simulateBtn" class="simulate-btn">Simulate Squat</button>
+      <button id="text">Turn Audio On</button>
+    </div>
+    <div id="status" class="status-indicator status-standing">STANDING</div>
   </div>
 
   <div id="counter">Reps: 0</div>
@@ -24,9 +27,7 @@
     <div id="msg">Your reps / depth will show up here</div>
     <div id="feedback">Click 'Simulate Squat' to test, or allow camera for real tracking</div>
     <div id="debug"></div>
-    
   </div>
-  <div id="status" class="status-indicator status-standing">STANDING</div>
 
   <!-- MediaPipe Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.min.js"></script>
