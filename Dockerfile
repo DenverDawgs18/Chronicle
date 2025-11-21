@@ -1,3 +1,12 @@
-FROM pierrezemb/gostatic
-COPY . /srv/http/
-CMD ["-port","8080","-https-promote", "-enable-logging"]
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8080
+
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]

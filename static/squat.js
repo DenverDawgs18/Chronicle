@@ -11,7 +11,6 @@ const debugEl = document.getElementById('debug');
 const statusEl = document.getElementById('status');
 const resetBtn = document.getElementById('resetBtn');
 const toggleDebugBtn = document.getElementById('toggleDebugBtn');
-const simulateBtn = document.getElementById('simulateBtn');
 const textBtn = document.getElementById('text');
 
 let repCount = 0;
@@ -25,16 +24,14 @@ let mediaStream = null;
 let isProcessing = false;
 let debugVisible = false;
 let stableFrameCount = 0;
-let simulationInterval = null;
-let isSimulating = false;
 
 // Fixed thresholds - realistic values for actual camera input
 const DESCENT_THRESHOLD = 0.02;   
 const MIN_DEPTH = 0.025;           // 2.5% - minimum hip-knee closure to count
-const GOOD_DEPTH = 0.05;           // 5% - threshold for "good depth"
+const GOOD_DEPTH = 0.075;           // 5% - threshold for "good depth"
 const ASCENT_THRESHOLD = 0.015;    // Must return most of the way up
 const STABILITY_FRAMES = 5;        // Reasonable frame count for stability
-const BASELINE_TOLERANCE = 0.03;   // 3% - accounts for breathing and minor movement
+const BASELINE_TOLERANCE = 0.01;   // 3% - accounts for breathing and minor movement
 
 textBtn.addEventListener('click', () => {
   if (!audioEnabled) {
@@ -45,14 +42,10 @@ textBtn.addEventListener('click', () => {
     speechSynthesis.speak(primeUtterance);
     speechPrimed = true;
     
-    feedbackEl.textContent = '🔊 Audio enabled! Start squatting!';
+    feedbackEl.textContent = 'Audio enabled! Start squatting!';
     
     setTimeout(() => {
-      if (state === 'standing' && !isSimulating) {
-        feedbackEl.textContent = 'Ready for next squat!';
-      } else if (isSimulating) {
-        feedbackEl.textContent = '🧪 Simulation running...';
-      }
+      feedbackEl.textContent = 'Ready for next squat!';
     }, 2000);
   } else { 
     audioEnabled = false;
@@ -62,11 +55,7 @@ textBtn.addEventListener('click', () => {
     feedbackEl.textContent = '🔇 Audio disabled';
     
     setTimeout(() => {
-      if (state === 'standing' && !isSimulating) {
-        feedbackEl.textContent = 'Ready for next squat!';
-      } else if (isSimulating) {
-        feedbackEl.textContent = '🧪 Simulation running...';
-      }
+      feedbackEl.textContent = 'Ready for next squat!';
     }, 2000);
   }
 });
@@ -89,55 +78,6 @@ toggleDebugBtn.addEventListener('click', () => {
   debugEl.style.display = debugVisible ? 'block' : 'none';
   toggleDebugBtn.textContent = debugVisible ? 'Hide Debug' : 'Show Debug';
 });
-
-simulateBtn.addEventListener('click', () => {
-  if (isSimulating) {
-    stopSimulation();
-  } else {
-    startSimulation();
-  }
-});
-
-function startSimulation() {
-  if (camera) {
-    stopCamera();
-  }
-  
-  isSimulating = true;
-  simulateBtn.textContent = 'Stop Simulation';
-  feedbackEl.textContent = '🧪 Simulation running - watch the counter!';
-  
-  repCount = 0;
-  state = 'standing';
-  maxHipY = null;
-  baselineHipY = null;
-  stableFrameCount = 0;
-  counterEl.textContent = 'Reps: 0';
-  updateStatus('standing');
-  
-  canvas.width = 640;
-  canvas.height = 480;
-  
-  simulateSquat();
-}
-
-function stopSimulation() {
-  isSimulating = false;
-  simulateBtn.textContent = 'Simulate Squat';
-  
-  if (simulationInterval) {
-    clearInterval(simulationInterval);
-    simulationInterval = null;
-  }
-  
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  feedbackEl.textContent = 'Simulation stopped. Click to restart or allow camera for real tracking.';
-  
-  if (pose) {
-    initializeCamera();
-  }
-}
-
 function stopCamera() {
   if (mediaStream) {
     mediaStream.getTracks().forEach(track => {
@@ -258,7 +198,6 @@ Stable Frames: ${stableFrameCount}/${STABILITY_FRAMES}`;
   else if (state === 'descending' && currentDepth >= MIN_DEPTH) {
     updateStatus('ascending');
     const depthPercent = Math.round(currentDepth * 100);
-    feedbackEl.textContent = `Depth: ${depthPercent}% - Now stand up!`;
   } 
   // Count rep when returning to standing position
   else if (state === 'ascending' && baselineHipY && maxHipY) {
@@ -293,7 +232,7 @@ Stable Frames: ${stableFrameCount}/${STABILITY_FRAMES}`;
 
       setTimeout(() => {
         if (state === 'standing') {
-          feedbackEl.textContent = isSimulating ? "🧪 Simulation running..." : "Ready for next squat!";
+          feedbackEl.textContent = "Ready for next squat!";
         }
       }, 2000);
     }
@@ -362,82 +301,8 @@ function drawPose(results) {
   ctx.restore();
 }
 
-function simulateSquat() {
-  let t = 0;
-
-  simulationInterval = setInterval(() => {
-    if (!isSimulating) return;
-
-    const cycleProgress = (t % 60) / 60;  // 6 second cycle
-    let hipKneeDistance = 0.15;  // Baseline standing distance
-
-    // Descent phase (30% of cycle)
-    if (cycleProgress < 0.3) {
-      const descentProgress = cycleProgress / 0.3;
-      // Distance decreases as we squat (hip moves toward knee)
-      hipKneeDistance = 0.15 - (0.06 * Math.sin(descentProgress * Math.PI * 0.5));
-    } 
-    // Bottom hold (20% of cycle)
-    else if (cycleProgress < 0.5) {
-      hipKneeDistance = 0.09;  // Deepest point
-    } 
-    // Ascent phase (30% of cycle)
-    else if (cycleProgress < 0.8) {
-      const ascentProgress = (cycleProgress - 0.5) / 0.3;
-      hipKneeDistance = 0.09 + (0.06 * Math.sin(ascentProgress * Math.PI * 0.5));
-    }
-    // Standing phase (20% of cycle)
-    else {
-      hipKneeDistance = 0.15;
-    }
-
-    const baseHipY = 0.5;
-    const fakeHipY = baseHipY;
-    const fakeKneeY = baseHipY + hipKneeDistance;
-
-    const fakeLandmarks = [];
-    
-    for (let i = 0; i < 33; i++) {
-      fakeLandmarks[i] = null;
-    }
-
-    const frontZ = 0.05;
-    const backZ = 0.15;
-    const frontX = 0.45;
-    const backX = 0.46;
-    
-    fakeLandmarks[11] = { x: frontX, y: 0.35, z: frontZ, visibility: 1 };
-    fakeLandmarks[12] = { x: backX, y: 0.35, z: backZ, visibility: 1 };
-    fakeLandmarks[23] = { x: frontX, y: fakeHipY, z: frontZ, visibility: 0.95 };
-    fakeLandmarks[24] = { x: backX, y: fakeHipY, z: backZ, visibility: 0.85 };
-    
-    fakeLandmarks[25] = { x: frontX, y: fakeKneeY, z: frontZ, visibility: 0.95 };
-    fakeLandmarks[26] = { x: backX, y: fakeKneeY, z: backZ, visibility: 0.85 };
-    
-    const ankleY = 0.85;
-    fakeLandmarks[27] = { x: frontX, y: ankleY, z: frontZ, visibility: 0.95 };
-    fakeLandmarks[28] = { x: backX, y: ankleY, z: backZ, visibility: 0.85 };
-
-    fakeLandmarks[0] = { x: frontX + 0.005, y: 0.15, z: frontZ + 0.02, visibility: 1 };
-    fakeLandmarks[15] = { x: frontX + 0.02, y: 0.18, z: frontZ, visibility: 1 };
-    fakeLandmarks[16] = { x: frontX - 0.02, y: 0.18, z: frontZ, visibility: 1 };
-
-    const fakeResults = { poseLandmarks: fakeLandmarks };
-
-    frameCount++;
-    drawPose(fakeResults);
-    detectSquat(fakeLandmarks);
-
-    t++;
-    
-    if (t > 200) {
-      stopSimulation();
-    }
-  }, 100);
-}
-
 function onResults(results) {
-  if (isProcessing || isSimulating) return;
+  if (isProcessing) return;
   isProcessing = true;
 
   frameCount++;
@@ -474,7 +339,6 @@ async function initializePose() {
 }
 
 async function initializeCamera() {
-  if (isSimulating) return;
   
   try {
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -499,7 +363,7 @@ async function initializeCamera() {
     
     camera = new Camera(video, {
       onFrame: async () => {
-        if (pose && !isProcessing && !isSimulating) {
+        if (pose && !isProcessing) {
           await pose.send({ image: video });
         }
       },
@@ -512,7 +376,7 @@ async function initializeCamera() {
     return true;
   } catch (err) {
     console.error("Camera error:", err);
-    feedbackEl.textContent = "❌ Camera failed. Use 'Simulate Squat' to test the app.";
+    feedbackEl.textContent = "❌ Camera failed. Please give access";
     return false;
   }
 }
@@ -523,11 +387,11 @@ async function initialize() {
     if (poseInitialized) {
       await initializeCamera();
     } else {
-      feedbackEl.textContent = "⚠️ Pose detection failed. Use 'Simulate Squat' to test.";
+      feedbackEl.textContent = "⚠️ Pose detection failed";
     }
   } catch (err) {
     console.error("Initialization error:", err);
-    feedbackEl.textContent = "⚠️ Setup incomplete. Use 'Simulate Squat' to test functionality.";
+    feedbackEl.textContent = "⚠️ Setup incomplete";
   }
 }
 
@@ -543,12 +407,18 @@ async function checkIfPaid(email) {
   }
 }
 
-const userEmail = prompt("Enter your email:");
-const isPaid = checkIfPaid(userEmail);
-if (isPaid) {
-
-  feedbackEl.textContent = "✅ Access verified! Start squatting!";
-  initialize();
-} else {
- feedbackEl.innerHTML = '❌ No payment found. Please <a href="https://buy.stripe.com/test_5kQ28s82c0X5d1I6zNaAw00" target="_blank" style="color: #00BFFF; text-decoration: underline;">purchase access here</a>';
+async function initializeApp() {
+  const userEmail = prompt("Enter your email:");
+  const isPaid = await checkIfPaid(userEmail);
+  
+  if (isPaid) {
+    feedbackEl.textContent = "✅ Access verified! Start squatting!";
+    initialize();
+  } else {
+    feedbackEl.innerHTML = '❌ No payment found. Please <a href="https://buy.stripe.com/test_5kQ28s82c0X5d1I6zNaAw00" target="_blank" style="color: #00BFFF; text-decoration: underline;">purchase access here</a>';
+  }
 }
+
+initializeApp();
+
+
