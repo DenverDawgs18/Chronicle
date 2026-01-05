@@ -1,91 +1,235 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 import stripe
 import os
 from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv()
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+
+# Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL')
 if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
     DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
-    print(f"Fixed DATABASE_URL scheme: {DATABASE_URL[:50]}...")
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///chronicle.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
+# Flask-Login setup
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+# Stripe configuration
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
+STRIPE_MONTHLY_LINK = os.getenv('STRIPE_MONTHLY_LINK', 'https://buy.stripe.com/your-monthly-link')
+STRIPE_ANNUAL_LINK = os.getenv('STRIPE_ANNUAL_LINK', 'https://buy.stripe.com/your-annual-link')
 
-class User(db.Model):
+# Database Models
+class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    paid = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
+    email = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    subscribed = db.Column(db.Boolean, default=False)
+    stripe_customer_id = db.Column(db.String(255), nullable=True)
+    subscription_type = db.Column(db.String(50), nullable=True)  # 'monthly' or 'annual'
+    subscription_end_date = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_login = db.Column(db.DateTime, nullable=True)
 
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+    
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
 
-
+# Create tables
 with app.app_context():
     db.create_all()
 
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
 
-
+# Routes
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('tracker') if current_user.subscribed else url_for('subscribe'))
+    
+    if request.method == 'POST':
+        data = request.get_json()
+        email = data.get('email', '').lower().strip()
+        password = data.get('password', '')
+        
+        if not email or not password:
+            return jsonify({'error': 'Email and password required'}), 400
+        
+        user = User.query.filter_by(email=email).first()
+        
+        if user and user.check_password(password):
+            login_user(user, remember=True)
+            user.last_login = datetime.utcnow()
+            db.session.commit()
+            
+            redirect_url = url_for('tracker') if user.subscribed else url_for('subscribe')
+            return jsonify({'success': True, 'redirect': redirect_url})
+        else:
+            return jsonify({'error': 'Invalid email or password'}), 401
+    
+    return render_template('login.html')
+
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    email = data.get('email', '').lower().strip()
+    password = data.get('password', '')
+    
+    if not email or not password:
+        return jsonify({'error': 'Email and password required'}), 400
+    
+    if len(password) < 8:
+        return jsonify({'error': 'Password must be at least 8 characters'}), 400
+    
+    # Check if user already exists
+    if User.query.filter_by(email=email).first():
+        return jsonify({'error': 'Email already registered'}), 400
+    
+    # Create new user
+    user = User(email=email)
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+    
+    login_user(user, remember=True)
+    return jsonify({'success': True, 'redirect': url_for('subscribe')})
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('index'))
+
+@app.route('/subscribe')
+def subscribe():
+    return render_template('subscribe.html', 
+                         stripe_monthly_link=STRIPE_MONTHLY_LINK,
+                         stripe_annual_link=STRIPE_ANNUAL_LINK)
+
+@app.route('/tracker')
+@login_required
+def tracker():
+    if not current_user.subscribed:
+        return redirect(url_for('subscribe'))
+    return render_template('tracker.html')
 
 @app.route('/webhook', methods=['POST'])
 def stripe_webhook():
     payload = request.data
     sig_header = request.headers.get('Stripe-Signature')
+    
     try:
         event = stripe.Webhook.construct_event(
-                payload, 
-                sig_header, 
-                WEBHOOK_SECRET,
-            )
+            payload, 
+            sig_header, 
+            WEBHOOK_SECRET
+        )
     except Exception as e:
         print(f"Webhook signature verification failed: {e}")
-        return "Bad signature", 400
-    try:        
+        return jsonify({'error': 'Invalid signature'}), 400
+    
+    try:
         # Handle successful payment
         if event['type'] == 'checkout.session.completed':
             session = event['data']['object']
             email = session['customer_details']['email'].lower()
+            customer_id = session.get('customer')
+            
+            # Get subscription details
+            subscription_id = session.get('subscription')
+            subscription_type = 'monthly'  # Default
+            
+            if subscription_id:
+                subscription = stripe.Subscription.retrieve(subscription_id)
+                # Determine if monthly or annual based on price
+                if subscription['items']['data']:
+                    price = subscription['items']['data'][0]['price']
+                    if price['recurring']['interval'] == 'year':
+                        subscription_type = 'annual'
             
             # Create or update user
             user = User.query.filter_by(email=email).first()
             if user:
-                user.paid = True
+                user.subscribed = True
+                user.stripe_customer_id = customer_id
+                user.subscription_type = subscription_type
             else:
-                user = User(email=email, paid=True)
+                # Create user without password (they'll need to set one on login)
+                user = User(
+                    email=email,
+                    subscribed=True,
+                    stripe_customer_id=customer_id,
+                    subscription_type=subscription_type
+                )
+                # Set a random password that they'll need to reset
+                user.set_password(os.urandom(24).hex())
                 db.session.add(user)
             
             db.session.commit()
-            print(f"✅ Payment recorded for {email}")
-
+            print(f"✅ Subscription activated for {email} ({subscription_type})")
+        
+        # Handle subscription cancellation
+        elif event['type'] == 'customer.subscription.deleted':
+            subscription = event['data']['object']
+            customer_id = subscription['customer']
             
-        return render_template("index.html")
+            user = User.query.filter_by(stripe_customer_id=customer_id).first()
+            if user:
+                user.subscribed = False
+                user.subscription_end_date = datetime.utcnow()
+                db.session.commit()
+                print(f"✅ Subscription cancelled for {user.email}")
+        
+        # Handle subscription updates
+        elif event['type'] == 'customer.subscription.updated':
+            subscription = event['data']['object']
+            customer_id = subscription['customer']
+            
+            user = User.query.filter_by(stripe_customer_id=customer_id).first()
+            if user:
+                # Update subscription status based on current status
+                user.subscribed = subscription['status'] == 'active'
+                db.session.commit()
+                print(f"✅ Subscription updated for {user.email}")
+        
+        return jsonify({'success': True}), 200
         
     except Exception as e:
         print(f"❌ Webhook error: {e}")
-        return jsonify({'error': 'Invalid payload'}), 400
+        return jsonify({'error': str(e)}), 400
 
-@app.route('/check-access', methods=['GET'])
-def check_access():
-    email = request.args.get('email', '').lower().strip()
-    
-    if not email:
-        return jsonify({'paid': False, 'error': 'Email required'}), 400
-    
-    user = User.query.filter_by(email=email).first()
+# API endpoint for checking subscription status
+@app.route('/api/subscription-status', methods=['GET'])
+@login_required
+def subscription_status():
+    return jsonify({
+        'subscribed': current_user.subscribed,
+        'subscription_type': current_user.subscription_type,
+        'email': current_user.email
+    })
 
-    is_paid = user and user.paid
-    print(is_paid)
-    
-    return jsonify({'paid': is_paid, 'email': email})
-
+if __name__ == '__main__':
+    app.run(debug=True)

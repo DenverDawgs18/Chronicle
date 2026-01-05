@@ -1,0 +1,226 @@
+    main {
+      padding-top: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - 80px);
+    }
+
+    .subscribe-container {
+      max-width: 900px;
+      width: 100%;
+      margin: 40px 20px;
+    }
+
+    .subscribe-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .subscribe-header h1 {
+      font-size: 3em;
+      margin: 0 0 16px 0;
+      background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subscribe-header p {
+      font-size: 1.2em;
+      color: rgba(255, 255, 255, 0.7);
+      margin: 0;
+    }
+
+    .pricing-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-bottom: 48px;
+    }
+
+    .pricing-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 40px 32px;
+      transition: all 0.3s ease;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .pricing-card:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-4px);
+    }
+
+    .pricing-card.featured {
+      border-color: rgba(96, 165, 250, 0.4);
+      background: rgba(96, 165, 250, 0.05);
+      position: relative;
+    }
+
+    .pricing-card.featured::before {
+      content: "BEST VALUE";
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+      color: white;
+      padding: 4px 16px;
+      border-radius: 12px;
+      font-size: 0.75em;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    .pricing-card h3 {
+      font-size: 1.4em;
+      margin: 0 0 8px 0;
+      color: #60a5fa;
+    }
+
+    .pricing-card .price {
+      font-size: 3em;
+      font-weight: 700;
+      margin: 16px 0;
+    }
+
+    .pricing-card .price span {
+      font-size: 0.4em;
+      color: rgba(255, 255, 255, 0.6);
+      font-weight: 400;
+    }
+
+    .pricing-card .features {
+      list-style: none;
+      padding: 0;
+      margin: 24px 0;
+      flex-grow: 1;
+    }
+
+    .pricing-card .features li {
+      padding: 12px 0;
+      color: rgba(255, 255, 255, 0.8);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .pricing-card .features li::before {
+      content: "✓";
+      color: #4ade80;
+      font-weight: 700;
+      font-size: 1.2em;
+    }
+
+    .subscribe-btn {
+      width: 100%;
+      background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+      color: white;
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 1em;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 16px rgba(96, 165, 250, 0.3);
+      text-decoration: none;
+      display: block;
+      text-align: center;
+    }
+
+    .subscribe-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(96, 165, 250, 0.4);
+    }
+
+    .features-section {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 40px;
+      margin-bottom: 32px;
+    }
+
+    .features-section h2 {
+      font-size: 1.8em;
+      margin: 0 0 24px 0;
+      text-align: center;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 24px;
+    }
+
+    .feature-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .feature-item .icon {
+      font-size: 2.5em;
+      margin-bottom: 12px;
+    }
+
+    .feature-item h4 {
+      margin: 0 0 8px 0;
+      font-size: 1.1em;
+    }
+
+    .feature-item p {
+      margin: 0;
+      font-size: 0.9em;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .alt-action {
+      text-align: center;
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 0.9em;
+    }
+
+    .alt-action a {
+      color: #60a5fa;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .alt-action a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 768px) {
+      main {
+        padding-top: 64px;
+      }
+
+      .subscribe-header h1 {
+        font-size: 2em;
+      }
+
+      .subscribe-header p {
+        font-size: 1em;
+      }
+
+      .pricing-cards {
+        grid-template-columns: 1fr;
+      }
+
+      .features-section {
+        padding: 24px;
+      }
+
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+    }

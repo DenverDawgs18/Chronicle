@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="../static/universal.css">
+  <link rel="stylesheet" href="../static/tracker.css">
+  <title>Enhanced Side Squat Tracker</title>
+</head>
+<body>
+<div id="video-container">
+    <video id="video" playsinline autoplay muted></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
+  </div>
+
+  <div id="controls">
+    <div class="height-input-container">
+      <label for="heightSlider">Height:</label>
+      <div class="height-slider-wrapper">
+        <input type="range" id="heightSlider" min="48" max="84" value="68" step="1">
+        <span id="heightValue">5'8"</span>
+      </div>
+    </div>
+    <button id="resetBtn">Reset Counter</button>
+  </div>
+
+  <div id="status" class="status-indicator status-standing">STANDING</div>
+  <div id="counter">Reps: 0</div>
+  
+  <div class="content-stack">
+    <div id="msg">Your rep speed will show up here</div>
+    <div id="feedback">Allow Camera for tracking</div>
+  </div>
+
+  <!-- MediaPipe Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.1/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.1/camera_utils.js"></script>
+  
+  <script>
+    // Height slider functionality
+    const heightSlider = document.getElementById('heightSlider');
+    const heightValue = document.getElementById('heightValue');
+    
+    function updateHeightDisplay(inches) {
+      const feet = Math.floor(inches / 12);
+      const remainingInches = inches % 12;
+      heightValue.textContent = `${feet}'${remainingInches}"`;
+    }
+    
+    heightSlider.addEventListener('input', (e) => {
+      updateHeightDisplay(parseInt(e.target.value));
+    });
+    
+    // Initialize display
+    updateHeightDisplay(parseInt(heightSlider.value));
+  </script>
+  <script src="../static/squat.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In - Chronicle</title>
+  <link rel="stylesheet" href="../static/universal.css">
+  <link rel="stylesheet" href="../static/login.css">
+</head>
+<body>
+  <nav>
+    <div class="nav-container">
+      <a href="/" class="nav-brand">CHRONICLE</a>
+      <div class="nav-links">
+        <a href="{{url_for('index')}}" class="nav-link">Back to Home</a>
+      </div>
+    </div>
+  </nav>
+  <main>
+    <div class="login-container">
+      <div class="login-card">
+        <h1>Welcome Back</h1>
+        <p class="subtitle">Sign in to continue tracking</p>
+
+        <div id="errorMessage" class="error-message"></div>
+
+        <form id="loginForm">
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input 
+              type="email" 
+              id="email" 
+              name="email" 
+              placeholder="your@email.com" 
+              required
+              autocomplete="email"
+            >
+          </div>
+
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input 
+              type="password" 
+              id="password" 
+              name="password" 
+              placeholder="••••••••" 
+              required
+              autocomplete="current-password"
+            >
+          </div>
+
+          <button type="submit" class="submit-btn" id="submitBtn">Sign In</button>
+        </form>
+
+        <div class="alt-action">
+          Don't have an account? <a href="/subscribe">Subscribe</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="../static/login.js"></script>
+</body>
+</html>
