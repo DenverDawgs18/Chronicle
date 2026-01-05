@@ -1,5 +1,35 @@
-let audioEnabled = false;
-let speechPrimed = false;
+// ========== HYPERPARAMETERS - ADJUSTED FOR GYM ROBUSTNESS ==========
+const MIN_DEPTH_INCHES = 4;
+const DESCENT_THRESHOLD_INCHES = 3;
+const STABILITY_FRAMES = 6;
+const CALIBRATION_SAMPLES = 5;
+const BASELINE_TOLERANCE_INCHES = 4;           // INCREASED from 3
+const MAX_STATE_TIME = 10000;
+const VELOCITY_THRESHOLD = 0.001;
+const RECOVERY_PERCENT = 80;
+const HYSTERESIS_INCHES = 0.5;
+const VELOCITY_WINDOW = 4;
+const STANDING_DETECTION_FRAMES = 5;
+const CALIBRATION_TOLERANCE_MULTIPLIER = 0.12;
+const LANDMARK_VISIBILITY_THRESHOLD = 0.4;
+const HIP_KNEE_RATIO = 0.24;
+const DEPTH_MARKER_HALF = 6;
+const DEPTH_MARKER_PARALLEL = 15.5;
+const DEPTH_MARKER_DEEP = 17.5;
+const VELOCITY_DROP_WARNING = 10;
+const VELOCITY_DROP_CRITICAL = 20;
+const SPEED_SCORE_MULTIPLIER = 1000;
+
+const MIN_STANDING_TIME_MS = 1000;
+const SIDE_LOCK_CONFIDENCE_THRESHOLD = 0.15;
+const QUICK_CALIBRATION_MODE = true;
+const DESCENT_VELOCITY_MIN = 0.002;
+const DRIFT_WARNING_THRESHOLD = 6;              // NEW: Only warn if drift exceeds this
+
+// DEBUG MODE - Set to true to see detailed landmark info
+const DEBUG_MODE = true;
+// ======================================================================
+
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -8,61 +38,75 @@ const feedbackEl = document.getElementById('feedback');
 const msgEl = document.getElementById('msg');
 const statusEl = document.getElementById('status');
 const resetBtn = document.getElementById('resetBtn');
-const audioBtn = document.getElementById('audioBtn');
 
-let repCount = 0;
-let state = 'standing';
-let maxHipY = null;
-let baselineHipY = null;
 let pose = null;
 let camera = null;
 let mediaStream = null;
 let isProcessing = false;
-let stableFrameCount = 0;
 
-// Rep timing data
+let state = 'standing';
+let repCount = 0;
+let stateStartTime = null;
+
+let standingHipY = null;
+let deepestHipY = null;
+let prevHipY = null;
+
+let hipKneeDistance = null;
+let inchesPerUnit = null;
+let userHeightInches = null;
+
+let lockedSide = null;
+let currentSide = 'left';
+
+let stableFrameCount = 0;
+let isCalibrated = false;
+let calibrationHipYValues = [];
+
+let velocityHistory = [];
+
 let ascentStartTime = null;
 let repTimes = [];
 let repDepths = [];
-let stateStartTime = null; // Track how long we've been in a state
 
-// Thresholds
-const DESCENT_THRESHOLD = 0.02375;   // Increased - less sensitive to walking
-const MIN_DEPTH = 0.02375;           // Increased - must be a real squat
-const ASCENT_THRESHOLD = 0.015;
-const STABILITY_FRAMES = 5;       // Increased - need more stable frames
-const BASELINE_TOLERANCE = 0.015; // Increased - more forgiving for standing
-const MAX_STATE_TIME = 8000;      // 8 seconds max in descending/ascending before reset
+let stableStandingStartTime = null;
+let lastStandingRecalibrationTime = 0;
 
-audioBtn.addEventListener('click', () => {
-  if (!audioEnabled) {
-    audioEnabled = true;
-    audioBtn.textContent = 'Turn Audio Off';
-    const primeUtterance = new SpeechSynthesisUtterance('');
-    speechSynthesis.speak(primeUtterance);
-    speechPrimed = true;
-    feedbackEl.textContent = 'Audio enabled!';
-  } else { 
-    audioEnabled = false;
-    speechPrimed = false;
-    audioBtn.textContent = 'Turn Audio On';
-    speechSynthesis.cancel();
-    feedbackEl.textContent = 'Audio disabled';
-  }
-});
+// Debug info
+let debugInfo = {};
+
+function getUserHeightInches() {
+  return parseInt(document.getElementById('heightSlider').value);
+}
 
 resetBtn.addEventListener('click', () => {
+  const keepCalibration = isCalibrated && hipKneeDistance && standingHipY;
+  
   repCount = 0;
   state = 'standing';
-  maxHipY = null;
-  baselineHipY = null;
+  deepestHipY = null;
+  prevHipY = null;
   stableFrameCount = 0;
   ascentStartTime = null;
   stateStartTime = null;
   repTimes = [];
   repDepths = [];
+  velocityHistory = [];
+  stableStandingStartTime = null;
+  
+  if (!keepCalibration) {
+    standingHipY = null;
+    hipKneeDistance = null;
+    inchesPerUnit = null;
+    isCalibrated = false;
+    calibrationHipYValues = [];
+    lockedSide = null;
+    feedbackEl.textContent = 'Counter reset! Stand sideways and stay still';
+  } else {
+    feedbackEl.textContent = 'Counter reset! Calibration kept - ready to squat';
+  }
+  
   counterEl.textContent = 'Reps: 0';
-  feedbackEl.textContent = 'Counter reset! Stand sideways';
   msgEl.innerHTML = '';
   updateStatus('standing');
 });
@@ -70,8 +114,29 @@ resetBtn.addEventListener('click', () => {
 function updateStatus(newState) {
   state = newState;
   stateStartTime = performance.now();
-  statusEl.textContent = state.toUpperCase();
-  statusEl.className = `status-indicator status-${state}`;
+  statusEl.textContent = newState.toUpperCase();
+  statusEl.className = `status-indicator status-${newState}`;
+}
+
+function normToInches(normalizedDistance) {
+  return inchesPerUnit ? normalizedDistance * inchesPerUnit : 0;
+}
+
+function inchesToNorm(inches) {
+  return inchesPerUnit ? inches / inchesPerUnit : 0;
+}
+
+function calculateSpeedScore(timeSeconds, depthInches) {
+  const timePerInch = timeSeconds / depthInches;
+  const speedScore = SPEED_SCORE_MULTIPLIER / timePerInch;
+  return Math.round(speedScore);
+}
+
+function getDepthQuality(depthInches) {
+  if (depthInches >= DEPTH_MARKER_DEEP) return { emoji: '🏆', label: 'Deep', color: '#00FF00' };
+  if (depthInches >= DEPTH_MARKER_PARALLEL) return { emoji: '✓', label: 'Parallel', color: '#90EE90' };
+  if (depthInches >= DEPTH_MARKER_HALF) return { emoji: '~', label: 'Half', color: '#FFD700' };
+  return { emoji: '⚠', label: 'Shallow', color: '#FFA500' };
 }
 
 function displayRepTimes() {
@@ -82,37 +147,30 @@ function displayRepTimes() {
 
   const firstRepTime = repTimes[0];
   const firstRepDepth = repDepths[0];
+  const firstSpeedScore = calculateSpeedScore(firstRepTime, firstRepDepth);
   
-  // Normalize first rep: time / depth, then multiply by 100 for readable numbers
-  const firstNormalized = (firstRepTime / firstRepDepth) * 100;
+  let html = '<div style="margin-bottom: 10px; font-weight: bold;">Speed Analysis</div>';
   
-  let html = '<div style="margin-bottom: 10px; font-weight: bold;">Bar Speed Analysis</div>';
-  
-  // Show last 5 reps
   const recentReps = repTimes.slice(-5);
   const recentDepths = repDepths.slice(-5);
   
   recentReps.forEach((time, idx) => {
     const actualRepNum = repTimes.length - recentReps.length + idx + 1;
-    const depth = recentDepths[idx];
-    const depthPercent = (depth * 100).toFixed(1);
+    const depthInches = recentDepths[idx];
+    const quality = getDepthQuality(depthInches);
     
-    // Normalized speed score (time/depth * 100)
-    const normalizedScore = (time / depth) * 100;
-    const velocityDrop = ((normalizedScore - firstNormalized) / firstNormalized * 100).toFixed(1);
-    const dropNum = parseFloat(velocityDrop);
+    const speedScore = calculateSpeedScore(time, depthInches);
+    const scoreDrop = ((firstSpeedScore - speedScore) / firstSpeedScore * 100).toFixed(1);
+    const dropNum = parseFloat(scoreDrop);
     
-    let color = '#00FF00'; // green
-    if (dropNum > 20) color = '#FF4444'; // red
-    else if (dropNum > 10) color = '#FFA500'; // orange
+    let color = '#00FF00';
+    if (dropNum > VELOCITY_DROP_CRITICAL) color = '#FF4444';
+    else if (dropNum > VELOCITY_DROP_WARNING) color = '#FFA500';
     
     html += `<div style="margin: 5px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">
       <div style="font-size: 16px; margin-bottom: 4px;">
-        Rep ${actualRepNum}: Speed Score ${normalizedScore.toFixed(1)}
-        <span style="color: ${color}; margin-left: 10px; font-weight: bold;">${dropNum > 0 ? '+' : ''}${velocityDrop}%</span>
-      </div>
-      <div style="font-size: 12px; color: #999;">
-        ${time.toFixed(2)}s • ${depthPercent}% depth
+        Rep ${actualRepNum}: Speed ${speedScore} ${quality.emoji} ${quality.label}
+        <span style="color: ${color}; margin-left: 10px; font-weight: bold;">${dropNum > 0 ? '-' : '+'}${Math.abs(dropNum).toFixed(1)}%</span>
       </div>
     </div>`;
   });
@@ -121,137 +179,295 @@ function displayRepTimes() {
 }
 
 function detectSquat(landmarks) {
-  // Only need hip and knee - don't require shoulder/ankle visibility
   const leftHip = landmarks[23];
   const rightHip = landmarks[24];
   const leftKnee = landmarks[25];
   const rightKnee = landmarks[26];
   
-  // Must have at least one complete hip-knee pair
-  const leftValid = leftHip && leftKnee && (leftHip.visibility || 0) > 0.5 && (leftKnee.visibility || 0) > 0.5;
-  const rightValid = rightHip && rightKnee && (rightHip.visibility || 0) > 0.5 && (rightKnee.visibility || 0) > 0.5;
+  // Store debug info
+  if (DEBUG_MODE) {
+    debugInfo = {
+      leftHip: leftHip ? { x: leftHip.x.toFixed(3), y: leftHip.y.toFixed(3), vis: (leftHip.visibility || 0).toFixed(2) } : null,
+      rightHip: rightHip ? { x: rightHip.x.toFixed(3), y: rightHip.y.toFixed(3), vis: (rightHip.visibility || 0).toFixed(2) } : null,
+      leftKnee: leftKnee ? { x: leftKnee.x.toFixed(3), y: leftKnee.y.toFixed(3), vis: (leftKnee.visibility || 0).toFixed(2) } : null,
+      rightKnee: rightKnee ? { x: rightKnee.x.toFixed(3), y: rightKnee.y.toFixed(3), vis: (rightKnee.visibility || 0).toFixed(2) } : null,
+      lockedSide: lockedSide,
+      currentSide: currentSide
+    };
+  }
+  
+  const leftValid = leftHip && leftKnee && 
+    (leftHip.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD && 
+    (leftKnee.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
+  const rightValid = rightHip && rightKnee && 
+    (rightHip.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD && 
+    (rightKnee.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
   
   if (!leftValid && !rightValid) {
-    // Can't track - reset if we've been stuck too long
-    if (state !== 'standing' && stateStartTime && (performance.now() - stateStartTime) > MAX_STATE_TIME) {
-      feedbackEl.textContent = "Lost tracking - reset";
-      updateStatus('standing');
-      maxHipY = null;
-      baselineHipY = null;
-      ascentStartTime = null;
+    if (state !== 'standing' && stateStartTime && 
+        (performance.now() - stateStartTime) > MAX_STATE_TIME) {
+      feedbackEl.textContent = "Lost tracking - resetting";
+      resetToStanding();
     }
     return;
   }
   
-  // Use the side with better visibility
-  const useLeft = leftValid && (!rightValid || (leftHip.visibility || 0) > (rightHip.visibility || 0));
+  if (lockedSide === null) {
+    lockedSide = leftValid && (!rightValid || 
+      (leftHip.visibility || 0) > (rightHip.visibility || 0)) ? 'left' : 'right';
+  } else {
+    const currentVisibility = lockedSide === 'left' ? 
+      (leftHip.visibility || 0) : (rightHip.visibility || 0);
+    const otherSide = lockedSide === 'left' ? 'right' : 'left';
+    const otherVisibility = otherSide === 'left' ? 
+      (leftHip.visibility || 0) : (rightHip.visibility || 0);
+    
+    const shouldSwitch = (
+      (lockedSide === 'left' && !leftValid && rightValid) ||
+      (lockedSide === 'right' && !rightValid && leftValid)
+    ) && (otherVisibility - currentVisibility > SIDE_LOCK_CONFIDENCE_THRESHOLD);
+    
+    if (shouldSwitch && state === 'standing') {
+      lockedSide = otherSide;
+      feedbackEl.textContent = `Switched to ${otherSide} side view`;
+    }
+  }
+  
+  const useLeft = (lockedSide === 'left');
+  currentSide = lockedSide;
+  
   const hip = useLeft ? leftHip : rightHip;
   const knee = useLeft ? leftKnee : rightKnee;
-
   const hipY = hip.y;
   const kneeY = knee.y;
-  const hipKneeDistance = kneeY - hipY;
   
-  // Check for stuck states and reset
+  if (!isCalibrated && state === 'standing') {
+    const currentHipKneeDist = Math.abs(kneeY - hipY);
+    
+    if (currentHipKneeDist < 0.05 || currentHipKneeDist > 0.5) {
+      feedbackEl.textContent = "Position yourself so full body is visible";
+      return;
+    }
+    
+    if (calibrationHipYValues.length === 0) {
+      calibrationHipYValues.push(hipY);
+      hipKneeDistance = currentHipKneeDist;
+      userHeightInches = getUserHeightInches();
+      feedbackEl.textContent = "Hold still for calibration... 1/" + CALIBRATION_SAMPLES;
+      return;
+    }
+    
+    const recentAvg = calibrationHipYValues.slice(-3).reduce((a, b) => a + b, 0) / 
+                      Math.min(calibrationHipYValues.length, 3);
+    const variation = Math.abs(hipY - recentAvg);
+    const tolerance = currentHipKneeDist * CALIBRATION_TOLERANCE_MULTIPLIER;
+    
+    if (variation < tolerance) {
+      calibrationHipYValues.push(hipY);
+      hipKneeDistance = hipKneeDistance * 0.8 + currentHipKneeDist * 0.2;
+      feedbackEl.textContent = `Hold still... ${calibrationHipYValues.length}/${CALIBRATION_SAMPLES}`;
+      
+      if (calibrationHipYValues.length >= CALIBRATION_SAMPLES) {
+        standingHipY = calibrationHipYValues.reduce((a, b) => a + b, 0) / calibrationHipYValues.length;
+        isCalibrated = true;
+        stableFrameCount = STABILITY_FRAMES;
+        stableStandingStartTime = performance.now();
+        
+        const expectedHipKneeInches = userHeightInches * HIP_KNEE_RATIO;
+        inchesPerUnit = expectedHipKneeInches / hipKneeDistance;
+        
+        const estimatedHipKneeInches = normToInches(hipKneeDistance);
+        const feet = Math.floor(userHeightInches / 12);
+        const inches = userHeightInches % 12;
+        feedbackEl.textContent = `✓ Calibrated! Height: ${feet}'${inches}", Hip-knee: ~${estimatedHipKneeInches.toFixed(1)}"`;
+        
+        setTimeout(() => {
+          if (state === 'standing') {
+            feedbackEl.textContent = "Ready to squat!";
+          }
+        }, 1500);
+      }
+    } else {
+      calibrationHipYValues = [];
+      feedbackEl.textContent = "Too much movement - restarting calibration";
+    }
+    
+    return;
+  }
+  
+  if (prevHipY !== null) {
+    const velocity = hipY - prevHipY;
+    velocityHistory.push(velocity);
+    if (velocityHistory.length > VELOCITY_WINDOW) {
+      velocityHistory.shift();
+    }
+  }
+  prevHipY = hipY;
+  
+  const avgVelocity = velocityHistory.length >= VELOCITY_WINDOW
+    ? velocityHistory.reduce((a, b) => a + b, 0) / velocityHistory.length
+    : 0;
+  
   if ((state === 'descending' || state === 'ascending') && stateStartTime) {
     const timeInState = performance.now() - stateStartTime;
     if (timeInState > MAX_STATE_TIME) {
       feedbackEl.textContent = "Rep abandoned - resetting";
-      updateStatus('standing');
-      maxHipY = null;
-      baselineHipY = hipKneeDistance;
-      stableFrameCount = 0;
-      ascentStartTime = null;
+      resetToStanding();
       return;
     }
   }
   
-  // Establish baseline when standing
+  // Only check baseline stability when we're truly standing (not moving into a squat)
   if (state === 'standing') {
-    if (baselineHipY === null) {
-      baselineHipY = hipKneeDistance;
-      stableFrameCount = 1;
-    } else {
-      const distanceVariation = Math.abs(hipKneeDistance - baselineHipY);
-      baselineHipY = (baselineHipY * 0.9 + hipKneeDistance * 0.1);
-      
-      if (distanceVariation < BASELINE_TOLERANCE) {
-        stableFrameCount++;
-      } else {
-        stableFrameCount = Math.max(1, stableFrameCount - 1);
-      }
-    }
-    maxHipY = null;
-  }
-
-  if (state === 'descending' || state === 'ascending') {
-    if (maxHipY === null) {
-      maxHipY = baselineHipY;
-    }
-    if (hipKneeDistance < maxHipY) {
-      maxHipY = hipKneeDistance;
-    }
-  }
-
-  const distanceChange = baselineHipY ? baselineHipY - hipKneeDistance : 0;
-  const currentDepth = (maxHipY !== null && baselineHipY) ? baselineHipY - maxHipY : 0;
-
-  // Standing -> Descending
-  if (state === 'standing' && baselineHipY && stableFrameCount >= STABILITY_FRAMES && distanceChange > DESCENT_THRESHOLD) {
-    updateStatus('descending');
-    maxHipY = baselineHipY;
-    feedbackEl.textContent = "Going down...";
-  } 
-  // Descending -> Ascending (START TIMER HERE)
-  else if (state === 'descending' && currentDepth >= MIN_DEPTH) {
-    updateStatus('ascending');
-    ascentStartTime = performance.now(); // Start timing the ascent
-    feedbackEl.textContent = "Drive up!";
-  } 
-  // Ascending -> Standing (COUNT REP AND RECORD TIME)
-  else if (state === 'ascending' && baselineHipY && maxHipY) {
-    const distanceRecovered = hipKneeDistance - maxHipY;
+    const distanceFromBaseline = Math.abs(hipY - standingHipY);
+    const toleranceNorm = inchesToNorm(BASELINE_TOLERANCE_INCHES);
+    const currentDepthNorm = hipY - standingHipY;
+    const descentThresholdNorm = inchesToNorm(DESCENT_THRESHOLD_INCHES);
     
-    if (distanceRecovered >= (currentDepth * 0.7) && distanceChange < DESCENT_THRESHOLD) {
-      // Calculate ascent time and store depth
-      const ascentTime = (performance.now() - ascentStartTime) / 1000; // Convert to seconds
-      repTimes.push(ascentTime);
-      repDepths.push(currentDepth);
-      repCount++;
+    // If we're moving down toward a squat, don't treat it as drift
+    const isStartingSquat = currentDepthNorm > descentThresholdNorm * 0.5;
+    
+    if (!isStartingSquat && distanceFromBaseline < toleranceNorm) {
+      stableFrameCount = Math.min(STABILITY_FRAMES, stableFrameCount + 1);
       
-      // Calculate normalized speed score
-      const normalizedScore = (ascentTime / currentDepth) * 100;
-      const velocityDrop = repTimes.length > 1 
-        ? ((normalizedScore - (repTimes[0] / repDepths[0]) * 100) / ((repTimes[0] / repDepths[0]) * 100) * 100).toFixed(1)
-        : 0;
-      
-      counterEl.textContent = `Reps: ${repCount}`;
-      feedbackEl.textContent = `Rep ${repCount}: Speed ${normalizedScore.toFixed(1)}`;
-      
-      if (audioEnabled && speechPrimed) {
-        const msg = velocityDrop > 20 
-          ? `Rep ${repCount}. Consider stopping`
-          : `Rep ${repCount}`;
-        const utterance = new SpeechSynthesisUtterance(msg);
-        speechSynthesis.speak(utterance);  
-      }
-      
-      displayRepTimes();
-
-      // Reset to standing
-      updateStatus('standing');
-      maxHipY = null;
-      baselineHipY = hipKneeDistance;
-      stableFrameCount = 0;
-      ascentStartTime = null;
-
-      setTimeout(() => {
-        if (state === 'standing') {
-          feedbackEl.textContent = "Ready for next rep";
+      if (stableFrameCount >= STABILITY_FRAMES) {
+        if (stableStandingStartTime === null) {
+          stableStandingStartTime = performance.now();
         }
-      }, 2000);
+        
+        if (QUICK_CALIBRATION_MODE) {
+          const timeSinceLastRecal = performance.now() - lastStandingRecalibrationTime;
+          if (timeSinceLastRecal > 3000) {
+            standingHipY = standingHipY * 0.95 + hipY * 0.05;
+            lastStandingRecalibrationTime = performance.now();
+          }
+        }
+      }
+    } else if (!isStartingSquat) {
+      stableFrameCount = Math.max(0, stableFrameCount - 1);
+      stableStandingStartTime = null;
+      
+      const driftInches = normToInches(distanceFromBaseline);
+      
+      // CRITICAL FIX: If we've been stable at a new position for a while, re-baseline there
+      // This handles long walkouts where user ends up far from calibration position
+      if (stableFrameCount === 0 && driftInches > BASELINE_TOLERANCE_INCHES * 1.5) {
+        // Check if hip position is relatively stable (not moving much frame-to-frame)
+        const isStablePosition = velocityHistory.length >= 3 && 
+          Math.abs(avgVelocity) < VELOCITY_THRESHOLD * 2;
+        
+        if (isStablePosition) {
+          // User has settled into a new position - adopt it as the new baseline
+          standingHipY = standingHipY * 0.7 + hipY * 0.3; // Gradually shift baseline
+          feedbackEl.textContent = `Adjusting baseline... hold position`;
+          
+          // Give them a head start on stability frames since they're already stable
+          stableFrameCount = Math.floor(STABILITY_FRAMES / 2);
+        } else if (driftInches > DRIFT_WARNING_THRESHOLD) {
+          feedbackEl.textContent = `⚠ ${driftInches.toFixed(1)}" from baseline - stand still`;
+        }
+      } else if (stableFrameCount > 0 && stableFrameCount < STABILITY_FRAMES) {
+        feedbackEl.textContent = `Stabilizing... ${stableFrameCount}/${STABILITY_FRAMES}`;
+      }
+    } else if (stableFrameCount > 0 && stableFrameCount < STABILITY_FRAMES) {
+      feedbackEl.textContent = `Stabilizing... ${stableFrameCount}/${STABILITY_FRAMES}`;
     }
   }
+  
+  if (state === 'descending' || state === 'ascending') {
+    if (deepestHipY === null || hipY > deepestHipY) {
+      deepestHipY = hipY;
+    }
+  }
+  
+  const currentDepthNorm = hipY - standingHipY;
+  const currentDepthInches = normToInches(currentDepthNorm);
+  
+  const maxDepthNorm = deepestHipY ? deepestHipY - standingHipY : 0;
+  const maxDepthInches = normToInches(maxDepthNorm);
+  
+  const descentThresholdNorm = inchesToNorm(DESCENT_THRESHOLD_INCHES);
+  const minDepthNorm = inchesToNorm(MIN_DEPTH_INCHES);
+  const hysteresisNorm = inchesToNorm(HYSTERESIS_INCHES);
+  
+  switch (state) {
+    case 'standing':
+      const hasBeenStable = stableStandingStartTime && 
+        (performance.now() - stableStandingStartTime) >= MIN_STANDING_TIME_MS;
+      const isIntentionalDescend = avgVelocity > DESCENT_VELOCITY_MIN;
+      
+      if (currentDepthNorm > descentThresholdNorm + hysteresisNorm && 
+          hasBeenStable && 
+          isIntentionalDescend) {
+        updateStatus('descending');
+        deepestHipY = hipY;
+        velocityHistory = [];
+        stableStandingStartTime = null;
+        feedbackEl.textContent = "⬇ Descending...";
+      } else if (currentDepthNorm > descentThresholdNorm && !hasBeenStable && stableStandingStartTime) {
+        // Only show countdown if we have a valid start time
+        const timeUntilReady = Math.ceil((MIN_STANDING_TIME_MS - 
+          (performance.now() - stableStandingStartTime)) / 1000);
+        if (timeUntilReady > 0) {
+          feedbackEl.textContent = `Setup detected - stabilizing... ${timeUntilReady}s`;
+        }
+      }
+      break;
+      
+    case 'descending':
+      if (currentDepthNorm >= minDepthNorm) {
+        if (velocityHistory.length >= VELOCITY_WINDOW && avgVelocity < -VELOCITY_THRESHOLD) {
+          updateStatus('ascending');
+          ascentStartTime = performance.now();
+          
+          const quality = getDepthQuality(maxDepthInches);
+          feedbackEl.textContent = `⬆ Drive up! ${quality.emoji} ${quality.label}`;
+        }
+      } else if (velocityHistory.length >= VELOCITY_WINDOW && avgVelocity < -VELOCITY_THRESHOLD) {
+        feedbackEl.textContent = `⚠ Too shallow! Need at least ${MIN_DEPTH_INCHES}"`;
+        resetToStanding();
+      }
+      break;
+      
+    case 'ascending':
+      const recovered = deepestHipY - hipY;
+      const totalDepth = maxDepthNorm;
+      const recoveryPercent = (recovered / totalDepth) * 100;
+      
+      if (recoveryPercent >= RECOVERY_PERCENT && 
+          currentDepthNorm < descentThresholdNorm - hysteresisNorm) {
+        const ascentTime = (performance.now() - ascentStartTime) / 1000;
+        repTimes.push(ascentTime);
+        repDepths.push(maxDepthInches);
+        repCount++;
+        
+        const speedScore = calculateSpeedScore(ascentTime, maxDepthInches);
+        
+        counterEl.textContent = `Reps: ${repCount}`;
+        
+        const quality = getDepthQuality(maxDepthInches);
+        feedbackEl.textContent = `✓ Rep ${repCount}: Speed ${speedScore} ${quality.emoji} ${quality.label}`;
+        
+        displayRepTimes();
+        resetToStanding();
+        
+        setTimeout(() => {
+          if (state === 'standing') {
+            feedbackEl.textContent = "Ready for next rep";
+          }
+        }, 1500);
+      }
+      break;
+  }
+}
+
+function resetToStanding() {
+  updateStatus('standing');
+  deepestHipY = null;
+  stableFrameCount = 0;
+  ascentStartTime = null;
+  velocityHistory = [];
+  stableStandingStartTime = null;
 }
 
 function drawPose(results) {
@@ -263,44 +479,178 @@ function drawPose(results) {
   if (results.poseLandmarks) {
     const landmarks = results.poseLandmarks;
     
+    // Draw ALL relevant landmarks in debug mode
+    if (DEBUG_MODE) {
+      // Draw all body landmarks with labels
+      const landmarksToShow = [
+        { idx: 11, name: 'L_Shoulder', color: '#FF00FF' },
+        { idx: 12, name: 'R_Shoulder', color: '#FF00FF' },
+        { idx: 23, name: 'L_Hip', color: '#FFD700' },
+        { idx: 24, name: 'R_Hip', color: '#FFD700' },
+        { idx: 25, name: 'L_Knee', color: '#00BFFF' },
+        { idx: 26, name: 'R_Knee', color: '#00BFFF' },
+        { idx: 27, name: 'L_Ankle', color: '#00FF00' },
+        { idx: 28, name: 'R_Ankle', color: '#00FF00' }
+      ];
+      
+      ctx.font = '12px Arial';
+      landmarksToShow.forEach(({ idx, name, color }) => {
+        const lm = landmarks[idx];
+        if (lm && (lm.visibility || 0) > 0.1) {
+          const x = lm.x * canvas.width;
+          const y = lm.y * canvas.height;
+          
+          // Draw circle
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(x, y, 6, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.strokeStyle = '#FFF';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          
+          // Draw label (un-mirror the text)
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.scale(-1, 1); // Un-mirror for text
+          ctx.fillStyle = '#FFF';
+          ctx.fillText(name, 10, -10);
+          ctx.fillText(`v:${(lm.visibility || 0).toFixed(2)}`, 10, 5);
+          ctx.restore();
+        }
+      });
+      
+      // Draw connections
+      const connections = [
+        [23, 25], // left hip to knee
+        [24, 26], // right hip to knee
+        [25, 27], // left knee to ankle
+        [26, 28]  // right knee to ankle
+      ];
+      
+      connections.forEach(([start, end]) => {
+        const lm1 = landmarks[start];
+        const lm2 = landmarks[end];
+        if (lm1 && lm2 && (lm1.visibility || 0) > 0.3 && (lm2.visibility || 0) > 0.3) {
+          ctx.beginPath();
+          ctx.moveTo(lm1.x * canvas.width, lm1.y * canvas.height);
+          ctx.lineTo(lm2.x * canvas.width, lm2.y * canvas.height);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      });
+    }
+    
     const leftHip = landmarks[23];
     const rightHip = landmarks[24];
     const leftKnee = landmarks[25];
     const rightKnee = landmarks[26];
     
-    const leftValid = leftHip && leftKnee && (leftHip.visibility || 0) > 0.5 && (leftKnee.visibility || 0) > 0.5;
-    const rightValid = rightHip && rightKnee && (rightHip.visibility || 0) > 0.5 && (rightKnee.visibility || 0) > 0.5;
-    const useLeft = leftValid && (!rightValid || (leftHip.visibility || 0) > (rightHip.visibility || 0));
+    const leftValid = leftHip && leftKnee && 
+      (leftHip.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD && 
+      (leftKnee.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
+    const rightValid = rightHip && rightKnee && 
+      (rightHip.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD && 
+      (rightKnee.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
     
+    const useLeft = (currentSide === 'left');
     const hip = useLeft ? leftHip : rightHip;
     const knee = useLeft ? leftKnee : rightKnee;
 
     if (hip && knee && ((useLeft && leftValid) || (!useLeft && rightValid))) {
-      // Draw line connecting hip to knee
+      // Draw TRACKED hip-knee line (the one used for measurement)
       ctx.beginPath();
       ctx.moveTo(hip.x * canvas.width, hip.y * canvas.height);
       ctx.lineTo(knee.x * canvas.width, knee.y * canvas.height);
-      ctx.strokeStyle = '#00FF00';
+      
+      if (state === 'descending') ctx.strokeStyle = '#FFA500';
+      else if (state === 'ascending') ctx.strokeStyle = '#00FF00';
+      else ctx.strokeStyle = '#00BFFF';
+      
+      ctx.lineWidth = 6; // Thicker for tracked landmarks
+      ctx.stroke();
+      
+      // Draw tracked hip with larger marker
+      ctx.fillStyle = '#FFD700';
+      ctx.beginPath();
+      ctx.arc(hip.x * canvas.width, hip.y * canvas.height, 14, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Draw tracked knee with larger marker
+      ctx.fillStyle = '#00BFFF';
+      ctx.beginPath();
+      ctx.arc(knee.x * canvas.width, knee.y * canvas.height, 12, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.strokeStyle = '#000';
       ctx.lineWidth = 3;
       ctx.stroke();
       
-      // Hip - Gold with white outline
-      ctx.fillStyle = '#FFD700';
-      ctx.beginPath();
-      ctx.arc(hip.x * canvas.width, hip.y * canvas.height, 12, 0, 2 * Math.PI);
-      ctx.fill();
-      ctx.strokeStyle = '#FFF';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Knee - Blue with white outline
-      ctx.fillStyle = '#00BFFF';
-      ctx.beginPath();
-      ctx.arc(knee.x * canvas.width, knee.y * canvas.height, 10, 0, 2 * Math.PI);
-      ctx.fill();
-      ctx.strokeStyle = '#FFF';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      if (standingHipY && isCalibrated && inchesPerUnit) {
+        const standingPos = standingHipY * canvas.height;
+        
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(0, standingPos);
+        ctx.lineTo(canvas.width, standingPos);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        const depthMarkers = [
+          { inches: DEPTH_MARKER_HALF, color: 'rgba(255, 165, 0, 0.4)' },
+          { inches: DEPTH_MARKER_PARALLEL, color: 'rgba(255, 255, 0, 0.4)' },
+          { inches: DEPTH_MARKER_DEEP, color: 'rgba(0, 255, 0, 0.4)' }
+        ];
+        
+        depthMarkers.forEach(({ inches, color }) => {
+          const depthNorm = inchesToNorm(inches);
+          const depthY = standingPos + (depthNorm * canvas.height);
+          
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.moveTo(0, depthY);
+          ctx.lineTo(canvas.width, depthY);
+          ctx.stroke();
+        });
+        ctx.setLineDash([]);
+      }
+    }
+    
+    // Display debug info
+    if (DEBUG_MODE && debugInfo.leftHip) {
+      ctx.save();
+      ctx.scale(-1, 1); // Un-mirror for text
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(-canvas.width, 0, 300, 180);
+      
+      ctx.fillStyle = '#00FF00';
+      ctx.font = '11px monospace';
+      let y = 15;
+      ctx.fillText(`Side: ${debugInfo.lockedSide} (${debugInfo.currentSide})`, -canvas.width + 10, y);
+      y += 15;
+      ctx.fillText(`L_Hip: x:${debugInfo.leftHip.x} y:${debugInfo.leftHip.y} v:${debugInfo.leftHip.vis}`, -canvas.width + 10, y);
+      y += 15;
+      ctx.fillText(`R_Hip: x:${debugInfo.rightHip.x} y:${debugInfo.rightHip.y} v:${debugInfo.rightHip.vis}`, -canvas.width + 10, y);
+      y += 15;
+      ctx.fillText(`L_Knee: x:${debugInfo.leftKnee.x} y:${debugInfo.leftKnee.y} v:${debugInfo.leftKnee.vis}`, -canvas.width + 10, y);
+      y += 15;
+      ctx.fillText(`R_Knee: x:${debugInfo.rightKnee.x} y:${debugInfo.rightKnee.y} v:${debugInfo.rightKnee.vis}`, -canvas.width + 10, y);
+      y += 20;
+      
+      if (isCalibrated) {
+        ctx.fillText(`Hip-Knee Dist: ${(hipKneeDistance * canvas.height).toFixed(0)}px`, -canvas.width + 10, y);
+        y += 15;
+        ctx.fillText(`Standing Y: ${(standingHipY * canvas.height).toFixed(0)}px`, -canvas.width + 10, y);
+      }
+      
+      ctx.restore();
     }
   }
   
@@ -332,7 +682,7 @@ async function initializePose() {
       selfieMode: false,
       enableSegmentation: false,
       minDetectionConfidence: 0.8,
-      minTrackingConfidence: 0.7
+      minTrackingConfidence: 0.8
     });
 
     pose.onResults(onResults);
@@ -376,7 +726,7 @@ async function initializeCamera() {
     });
 
     await camera.start();
-    feedbackEl.textContent = "✅ Stand sideways and squat!";
+    feedbackEl.textContent = "✅ Set your height, then stand sideways and stay still";
     return true;
   } catch (err) {
     console.error("Camera error:", err);
