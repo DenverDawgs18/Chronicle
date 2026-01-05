@@ -92,30 +92,37 @@ def login():
     
     return render_template('login.html')
 
-@app.route('/register', methods=['POST'])
+@app.route('/register', methods=['GET', 'POST'])
 def register():
-    data = request.get_json()
-    email = data.get('email', '').lower().strip()
-    password = data.get('password', '')
+    if current_user.is_authenticated:
+        return redirect(url_for('tracker') if current_user.subscribed else url_for('subscribe'))
     
-    if not email or not password:
-        return jsonify({'error': 'Email and password required'}), 400
+    if request.method == 'POST':
+        data = request.get_json()
+        email = data.get('email', '').lower().strip()
+        password = data.get('password', '')
+        
+        if not email or not password:
+            return jsonify({'error': 'Email and password required'}), 400
+        
+        if len(password) < 8:
+            return jsonify({'error': 'Password must be at least 8 characters'}), 400
+        
+        # Check if user already exists
+        if User.query.filter_by(email=email).first():
+            return jsonify({'error': 'Email already registered'}), 400
+        
+        # Create new user
+        user = User(email=email)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        
+        login_user(user, remember=True)
+        return jsonify({'success': True, 'redirect': url_for('subscribe')})
     
-    if len(password) < 8:
-        return jsonify({'error': 'Password must be at least 8 characters'}), 400
-    
-    # Check if user already exists
-    if User.query.filter_by(email=email).first():
-        return jsonify({'error': 'Email already registered'}), 400
-    
-    # Create new user
-    user = User(email=email)
-    user.set_password(password)
-    db.session.add(user)
-    db.session.commit()
-    
-    login_user(user, remember=True)
-    return jsonify({'success': True, 'redirect': url_for('subscribe')})
+    # GET request - render the login page (which has register toggle)
+    return render_template('login.html')
 
 @app.route('/logout')
 @login_required
@@ -221,7 +228,6 @@ def stripe_webhook():
         print(f"❌ Webhook error: {e}")
         return jsonify({'error': str(e)}), 400
 
-# API endpoint for checking subscription status
 @app.route('/api/subscription-status', methods=['GET'])
 @login_required
 def subscription_status():

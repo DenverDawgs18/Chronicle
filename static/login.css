@@ -1,4 +1,4 @@
- main {
+   main {
       padding-top: 80px;
       display: flex;
       align-items: center;
@@ -19,6 +19,32 @@
       border-radius: 16px;
       padding: 48px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .mode-toggle {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 32px;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 4px;
+      border-radius: 8px;
+    }
+
+    .mode-btn {
+      flex: 1;
+      padding: 10px;
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.6);
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 6px;
+      transition: all 0.3s ease;
+    }
+
+    .mode-btn.active {
+      background: rgba(96, 165, 250, 0.2);
+      color: #60a5fa;
     }
 
     .login-card h1 {
@@ -108,28 +134,15 @@
       display: block;
     }
 
-    .divider {
-      text-align: center;
-      margin: 24px 0;
-      color: rgba(255, 255, 255, 0.4);
-      font-size: 0.9em;
+    .password-hint {
+      font-size: 0.85em;
+      color: rgba(255, 255, 255, 0.5);
+      margin-top: 4px;
+      display: none;
     }
 
-    .alt-action {
-      text-align: center;
-      margin-top: 24px;
-      color: rgba(255, 255, 255, 0.6);
-      font-size: 0.9em;
-    }
-
-    .alt-action a {
-      color: #60a5fa;
-      text-decoration: none;
-      font-weight: 500;
-    }
-
-    .alt-action a:hover {
-      text-decoration: underline;
+    .password-hint.show {
+      display: block;
     }
 
     @media (max-width: 768px) {

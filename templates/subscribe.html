@@ -39,7 +39,11 @@
             <li>Rep counter</li>
             <li>No equipment needed</li>
           </ul>
-          <a href="{{ stripe_monthly_link }}" class="subscribe-btn">Get Started</a>
+          {% if current_user.is_authenticated %}
+            <a href="{{ stripe_monthly_link }}" class="subscribe-btn">Get Started</a>
+          {% else %}
+            <a href="{{url_for('subscribe')}}" class="subscribe-btn">Sign In to Subscribe</a>
+          {% endif %}
         </div>
 
         <div class="pricing-card featured">
@@ -52,7 +56,11 @@
             <li>Early access to new features</li>
             <li>Cancel anytime</li>
           </ul>
-          <a href="{{ stripe_annual_link }}" class="subscribe-btn">Get Started</a>
+          {% if current_user.is_authenticated %}
+            <a href="{{ stripe_monthly_link }}" class="subscribe-btn">Get Started</a>
+          {% else %}
+            <a href="{{url_for('subscribe')}}" class="subscribe-btn">Sign In to Subscribe</a>
+          {% endif %}
         </div>
       </div>
 
@@ -81,10 +89,9 @@
           </div>
         </div>
       </div>
-
-      <div class="alt-action">
-        Already have an account? <a href="/login">Sign In</a>
-      </div>
+      {% if not current_user.is_authenticated %}
+        <div class="alt-action">Don't have an account? <a href="/login">Create one now</a></div>
+      {% endif %}
     </div>
   </main>
 </body>

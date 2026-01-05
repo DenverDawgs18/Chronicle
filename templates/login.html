@@ -19,12 +19,17 @@
   <main>
     <div class="login-container">
       <div class="login-card">
-        <h1>Welcome Back</h1>
-        <p class="subtitle">Sign in to continue tracking</p>
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="loginModeBtn">Sign In</button>
+          <button class="mode-btn" id="registerModeBtn">Create Account</button>
+        </div>
+
+        <h1 id="formTitle">Welcome Back</h1>
+        <p class="subtitle" id="formSubtitle">Sign in to continue tracking</p>
 
         <div id="errorMessage" class="error-message"></div>
 
-        <form id="loginForm">
+        <form id="authForm">
           <div class="form-group">
             <label for="email">Email</label>
             <input 
@@ -47,17 +52,15 @@
               required
               autocomplete="current-password"
             >
+            <div class="password-hint" id="passwordHint">Password must be at least 8 characters</div>
           </div>
 
           <button type="submit" class="submit-btn" id="submitBtn">Sign In</button>
         </form>
-
-        <div class="alt-action">
-          Don't have an account? <a href="/subscribe">Subscribe</a>
-        </div>
       </div>
     </div>
   </main>
+
 
   <script src="../static/login.js"></script>
 </body>
