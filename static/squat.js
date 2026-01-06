@@ -334,14 +334,6 @@ function detectSquat(landmarks) {
         if (stableStandingStartTime === null) {
           stableStandingStartTime = performance.now();
         }
-        
-        if (QUICK_CALIBRATION_MODE) {
-          const timeSinceLastRecal = performance.now() - lastStandingRecalibrationTime;
-          if (timeSinceLastRecal > 3000) {
-            standingHipY = standingHipY * 0.95 + hipY * 0.05;
-            lastStandingRecalibrationTime = performance.now();
-          }
-        }
       }
     } else if (!isStartingSquat) {
       stableFrameCount = Math.max(0, stableFrameCount - 1);
@@ -356,16 +348,15 @@ function detectSquat(landmarks) {
         const isStablePosition = velocityHistory.length >= 3 && 
           Math.abs(avgVelocity) < VELOCITY_THRESHOLD * 2;
         
-        if (isStablePosition) {
-          // User has settled into a new position - adopt it as the new baseline
-          standingHipY = standingHipY * 0.7 + hipY * 0.3; // Gradually shift baseline
-          feedbackEl.textContent = `Adjusting baseline... hold position`;
-          
-          // Give them a head start on stability frames since they're already stable
-          stableFrameCount = Math.floor(STABILITY_FRAMES / 2);
-        } else if (driftInches > DRIFT_WARNING_THRESHOLD) {
-          feedbackEl.textContent = `⚠ ${driftInches.toFixed(1)}" from baseline - stand still`;
-        }
+      if (isStablePosition) {
+        // User has settled into a new position - adopt it IMMEDIATELY
+        standingHipY = hipY;  // ← Accept new position fully, not gradually
+        stableFrameCount = STABILITY_FRAMES;  // ← Give FULL credit
+        stableStandingStartTime = performance.now();  // ← Reset standing timer
+        feedbackEl.textContent = `✓ Position updated - ready to squat`;
+      } else if (driftInches > DRIFT_WARNING_THRESHOLD) {
+        feedbackEl.textContent = `⚠ ${driftInches.toFixed(1)}" from baseline - stand still`;
+      }
       } else if (stableFrameCount > 0 && stableFrameCount < STABILITY_FRAMES) {
         feedbackEl.textContent = `Stabilizing... ${stableFrameCount}/${STABILITY_FRAMES}`;
       }
@@ -394,14 +385,17 @@ function detectSquat(landmarks) {
     case 'standing':
       const hasBeenStable = stableStandingStartTime && 
         (performance.now() - stableStandingStartTime) >= MIN_STANDING_TIME_MS;
-      const isIntentionalDescend = avgVelocity > DESCENT_VELOCITY_MIN;
       
-      if (currentDepthNorm > descentThresholdNorm + hysteresisNorm && 
-          hasBeenStable && 
-          isIntentionalDescend) {
+      // Check if moving down OR already well past threshold
+      const isMovingDown = avgVelocity > DESCENT_VELOCITY_MIN;
+      const wellPastThreshold = currentDepthNorm > descentThresholdNorm * 1.2; // Lowered from 1.5x to 1.2x
+      const isPastThreshold = currentDepthNorm > descentThresholdNorm + hysteresisNorm;
+      
+      // Allow descent if: past threshold AND (moving down OR significantly past threshold)
+      if (isPastThreshold && hasBeenStable && (isMovingDown || wellPastThreshold)) {
         updateStatus('descending');
         deepestHipY = hipY;
-        velocityHistory = [];
+        velocityHistory = []; // Clear velocity history on state change
         stableStandingStartTime = null;
         feedbackEl.textContent = "⬇ Descending...";
       } else if (currentDepthNorm > descentThresholdNorm && !hasBeenStable && stableStandingStartTime) {
@@ -434,8 +428,10 @@ function detectSquat(landmarks) {
       const totalDepth = maxDepthNorm;
       const recoveryPercent = (recovered / totalDepth) * 100;
       
+      // CRITICAL FIX: Only count rep if depth was sufficient
       if (recoveryPercent >= RECOVERY_PERCENT && 
-          currentDepthNorm < descentThresholdNorm - hysteresisNorm) {
+          currentDepthNorm < descentThresholdNorm - hysteresisNorm &&
+          maxDepthInches >= MIN_DEPTH_INCHES) {
         const ascentTime = (performance.now() - ascentStartTime) / 1000;
         repTimes.push(ascentTime);
         repDepths.push(maxDepthInches);
