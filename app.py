@@ -45,6 +45,7 @@ class User(UserMixin, db.Model):
     subscription_end_date = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime, nullable=True)
+    needs_password_setup = db.Column(db.Boolean, default=False)  # NEW: Flag for users created via payment
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -171,6 +172,65 @@ def access_code():
     
     # GET request - render the code page
     return render_template('code.html')
+@app.route('/setup-password', methods=['GET', 'POST'])
+def setup_password():
+    # If user doesn't need password setup, redirect them
+    if not current_user.needs_password_setup:
+        return redirect(url_for('tracker') if current_user.subscribed else url_for('subscribe'))
+    
+    if request.method == 'POST':
+        data = request.get_json()
+        password = data.get('password', '')
+        
+        if not password:
+            return jsonify({'error': 'Password required'}), 400
+        
+        if len(password) < 8:
+            return jsonify({'error': 'Password must be at least 8 characters'}), 400
+        
+        # Set the new password
+        current_user.set_password(password)
+        current_user.needs_password_setup = False
+        db.session.commit()
+        
+        print(f"✅ Password set for {current_user.email}")
+        
+        # Redirect to tracker since they already have a subscription
+        return jsonify({'success': True, 'redirect': url_for('tracker')})
+    
+    return render_template('setup_password.html')
+
+@app.route('/payment-success')
+def payment_success():
+    """
+    Landing page after Stripe payment.
+    Since we can't get email from Payment Links, we use session_id to look up the checkout.
+    """
+    session_id = request.args.get('session_id', '').strip()
+    
+    try:
+        # Retrieve the checkout session from Stripe to get customer email
+        checkout_session = stripe.checkout.Session.retrieve(session_id)
+        email = checkout_session['customer_details']['email'].lower()
+        
+        # Check if user exists
+        user = User.query.filter_by(email=email).first()
+        
+        if user:
+            # Check if they need to set up a password
+            if user.needs_password_setup:
+                # Log them in automatically and redirect to password setup
+                login_user(user, remember=True)
+                return redirect(url_for('setup_password'))
+            elif current_user.is_authenticated:
+                return redirect(url_for('tracker'))
+            else:
+                return redirect(url_for('login'))
+    except stripe.error.StripeError as e:
+        print(f"Error retrieving checkout session: {e}")
+        return render_template('payment_success.html',
+                             show_login=True,
+                             message="Payment successful! Please log in to access your account.")
 
 @app.route('/webhook', methods=['POST'])
 def stripe_webhook():
@@ -190,12 +250,12 @@ def stripe_webhook():
     try:
         # Handle successful payment
         if event['type'] == 'checkout.session.completed':
-            session = event['data']['object']
-            email = session['customer_details']['email'].lower()
-            customer_id = session.get('customer')
+            session_obj = event['data']['object']
+            email = session_obj['customer_details']['email'].lower()
+            customer_id = session_obj.get('customer')
             
             # Get subscription details
-            subscription_id = session.get('subscription')
+            subscription_id = session_obj.get('subscription')
             subscription_type = 'monthly'  # Default
             
             if subscription_id:
@@ -206,26 +266,34 @@ def stripe_webhook():
                     if price['recurring']['interval'] == 'year':
                         subscription_type = 'annual'
             
-            # Create or update user
+            # Check if user exists
             user = User.query.filter_by(email=email).first()
+            
             if user:
+                # Existing user - just update subscription
                 user.subscribed = True
                 user.stripe_customer_id = customer_id
                 user.subscription_type = subscription_type
+                print(f"✅ Subscription activated for existing user {email} ({subscription_type})")
             else:
-                # Create user without password (they'll need to set one on login)
+                # New user - create account with temporary password
                 user = User(
                     email=email,
                     subscribed=True,
                     stripe_customer_id=customer_id,
-                    subscription_type=subscription_type
+                    subscription_type=subscription_type,
+                    needs_password_setup=True  # Flag them to set password
                 )
-                # Set a random password that they'll need to reset
+                # Set a temporary random password
                 user.set_password(os.urandom(24).hex())
                 db.session.add(user)
+                print(f"✅ New user created for {email} ({subscription_type}) - needs password setup")
             
             db.session.commit()
-            print(f"✅ Subscription activated for {email} ({subscription_type})")
+            
+            # Update Stripe session to redirect to our success page with email
+            # Note: You'll need to configure this in your Stripe Payment Link settings
+            # or use the Stripe API to create sessions programmatically
         
         # Handle subscription cancellation
         elif event['type'] == 'customer.subscription.deleted':
