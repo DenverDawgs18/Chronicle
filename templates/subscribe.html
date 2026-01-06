@@ -10,7 +10,7 @@
 <body>
   <nav>
     <div class="nav-container">
-      <a href="/" class="nav-brand">CHRONICLE</a>
+      <a href="{{url_for('index')}}" class="nav-brand">CHRONICLE</a>
       <div class="nav-links">
         {% if current_user.is_authenticated %}
           <a href="/logout" class="nav-link">Sign Out</a>
@@ -20,7 +20,6 @@
       </div>
     </div>
   </nav>
-
   <main>
     <div class="subscribe-container">
       <div class="subscribe-header">

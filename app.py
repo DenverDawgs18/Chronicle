@@ -33,7 +33,7 @@ stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
 STRIPE_MONTHLY_LINK = os.getenv('STRIPE_MONTHLY_LINK', 'https://buy.stripe.com/your-monthly-link')
 STRIPE_ANNUAL_LINK = os.getenv('STRIPE_ANNUAL_LINK', 'https://buy.stripe.com/your-annual-link')
-
+ACCESS_CODE = os.getenv('ACCESS_CODE')
 # Database Models
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -142,6 +142,35 @@ def tracker():
     if not current_user.subscribed:
         return redirect(url_for('subscribe'))
     return render_template('tracker.html')
+
+@app.route('/code', methods=['GET', 'POST'])
+@login_required
+def access_code():
+    # If user is already subscribed, redirect to tracker
+    if current_user.subscribed:
+        return redirect(url_for('tracker'))
+    
+    if request.method == 'POST':
+        data = request.get_json()
+        code = data.get('code', '').strip()
+        
+        if not code:
+            return jsonify({'error': 'Code required'}), 400
+        
+        # Check if code matches
+        if code.upper() == ACCESS_CODE:
+            # Grant lifetime access
+            current_user.subscribed = True
+            current_user.subscription_type = 'lifetime'
+            db.session.commit()
+            
+            print(f"✅ Lifetime access granted to {current_user.email} via access code")
+            return jsonify({'success': True, 'message': 'Access granted!'})
+        else:
+            return jsonify({'error': 'Invalid access code'}), 401
+    
+    # GET request - render the code page
+    return render_template('code.html')
 
 @app.route('/webhook', methods=['POST'])
 def stripe_webhook():

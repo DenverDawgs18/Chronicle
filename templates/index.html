@@ -10,7 +10,7 @@
 <body>
   <nav>
     <div class="nav-container">
-      <a href="/" class="nav-brand">CHRONICLE</a>
+      <a href="{{url_for('index')}}" class="nav-brand">CHRONICLE</a>
       <div class="nav-links">
         {% if current_user.is_authenticated %}
           {% if current_user.subscribed %}

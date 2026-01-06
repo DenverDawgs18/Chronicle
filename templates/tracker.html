@@ -8,11 +8,18 @@
   <title>Enhanced Side Squat Tracker</title>
 </head>
 <body>
+<nav>
+    <div class="nav-container">
+      <a href="{{url_for('index')}}" class="nav-brand">CHRONICLE</a>
+      <div class="nav-links">
+        <a href="/logout" class="nav-link">Sign Out</a>
+      </div>
+    </div>
+  </nav>
 <div id="video-container">
     <video id="video" playsinline autoplay muted></video>
     <canvas id="canvas" width="640" height="480"></canvas>
   </div>
-
   <div id="controls">
     <div class="height-input-container">
       <label for="heightSlider">Height:</label>
