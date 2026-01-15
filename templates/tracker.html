@@ -26,8 +26,8 @@
     <div class="height-input-container">
       <label for="heightSlider">Height:</label>
       <div class="height-slider-wrapper">
-        <input type="range" id="heightSlider" min="48" max="84" value="68" step="1">
-        <span id="heightValue">5'8"</span>
+        <input type="range" id="heightSlider" min="48" max="84" value="{{ height }}" step="1">
+        <span id="heightValue">{{ height|format_height }}</span>
       </div>
     </div>
     <button id="resetBtn">Reset Counter</button>

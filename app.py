@@ -1,11 +1,13 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask_migrate import Migrate
 from werkzeug.security import generate_password_hash, check_password_hash
 import stripe
 import os
 from dotenv import load_dotenv
 from datetime import datetime
+import jinja2
 
 load_dotenv()
 
@@ -23,6 +25,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
+migrate = Migrate(app, db)
 # Flask-Login setup
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -45,6 +48,7 @@ class User(UserMixin, db.Model):
     subscription_end_date = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime, nullable=True)
+    height = db.Column(db.Integer, default=58)  # Default height in inches
     needs_password_setup = db.Column(db.Boolean, default=False)  # NEW: Flag for users created via payment
 
     def set_password(self, password):
@@ -60,6 +64,13 @@ with app.app_context():
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+@app.template_filter('format_height')
+def format_height(height):
+    feet = height // 12
+    inches = height % 12
+    return f"{feet}'{inches}\""
+
 
 # Routes
 @app.route('/')
@@ -142,7 +153,24 @@ def subscribe():
 def tracker():
     if not current_user.subscribed:
         return redirect(url_for('subscribe'))
-    return render_template('tracker.html')
+    return render_template('tracker.html', height=current_user.height)
+
+@app.route("/set_height", methods= ['POST'])
+@login_required
+def set_height():
+    data = request.get_json()
+    height = data.get('height')
+    
+    if not height or not isinstance(height, int) or height <= 0:
+        return jsonify({'error': 'Valid height required'}), 400
+    
+    current_user.height = height
+    db.session.commit()
+    
+    return jsonify({'success': True, 'height': current_user.height})
+
+
+
 
 @app.route('/code', methods=['GET', 'POST'])
 @login_required

@@ -15,7 +15,7 @@
         {% if current_user.is_authenticated %}
           {% if current_user.subscribed %}
             <a href="{{url_for('tracker')}}" class="nav-link primary">Tracker</a>
-            <a href="https://billing.stripe.com/p/login/5kQdRa84z2Pn4I5drc4wM00">Manage Billing</a>
+            <a href="https://billing.stripe.com/p/login/5kQdRa84z2Pn4I5drc4wM00" class="nav-link primary">Manage Billing</a>
           {% else %}
             <a href="{{url_for('subscribe')}}" class="nav-link primary">Subscribe</a>
           {% endif %}

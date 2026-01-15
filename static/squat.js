@@ -1,9 +1,9 @@
-// ========== HYPERPARAMETERS - ADJUSTED FOR GYM ROBUSTNESS ==========
-const MIN_DEPTH_INCHES = 4;
-const DESCENT_THRESHOLD_INCHES = 3;
+// ========== HYPERPARAMETERS - FIXED VERSION ==========
+const MIN_DEPTH_INCHES = 6;
+const DESCENT_THRESHOLD_INCHES = 3.5;  // Balanced between Doc1 and Doc2
 const STABILITY_FRAMES = 6;
 const CALIBRATION_SAMPLES = 5;
-const BASELINE_TOLERANCE_INCHES = 4;           // INCREASED from 3
+const BASELINE_TOLERANCE_INCHES = 5;   // Slightly more forgiving
 const MAX_STATE_TIME = 10000;
 const VELOCITY_THRESHOLD = 0.001;
 const RECOVERY_PERCENT = 80;
@@ -20,13 +20,20 @@ const VELOCITY_DROP_WARNING = 10;
 const VELOCITY_DROP_CRITICAL = 20;
 const SPEED_SCORE_MULTIPLIER = 1000;
 
-const MIN_STANDING_TIME_MS = 1000;
+const MIN_STANDING_TIME_MS = 1500;  // Longer to avoid false positives during unracking
 const SIDE_LOCK_CONFIDENCE_THRESHOLD = 0.15;
 const QUICK_CALIBRATION_MODE = true;
-const DESCENT_VELOCITY_MIN = 0.002;
-const DRIFT_WARNING_THRESHOLD = 6;              // NEW: Only warn if drift exceeds this
+const DESCENT_VELOCITY_MIN = 0.0015;  // Balanced sensitivity
+const DRIFT_WARNING_THRESHOLD = 3;
+const DRIFT_CRITICAL_THRESHOLD = 6;
 
-// DEBUG MODE - Set to true to see detailed landmark info
+const DEPTH_TRIGGER_MULTIPLIER = 1.3;  // Higher to reduce false positives
+const BASELINE_UPDATE_ALPHA = 0.2;
+const REBASELINE_STABILITY_FRAMES = 10;
+const RECOVERY_WARNING_THRESHOLD = 50;
+const TRACKING_LOSS_TOLERANCE_FRAMES = 30;
+
+// DEBUG MODE
 const DEBUG_MODE = true;
 // ======================================================================
 
@@ -72,12 +79,26 @@ let repDepths = [];
 let stableStandingStartTime = null;
 let lastStandingRecalibrationTime = 0;
 
-// Debug info
+let rebaselineStabilityCount = 0;
+let potentialNewBaseline = null;
+
+let trackingLossFrames = 0;
+
 let debugInfo = {};
 
 function getUserHeightInches() {
   return parseInt(document.getElementById('heightSlider').value);
 }
+
+document.getElementById('heightSlider').addEventListener('change', (e) => { 
+  const heightInches = parseInt(e.target.value);
+  fetch('/set_height', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+  },
+    body: JSON.stringify({ height: heightInches }),
+  })});
 
 resetBtn.addEventListener('click', () => {
   const keepCalibration = isCalibrated && hipKneeDistance && standingHipY;
@@ -93,6 +114,9 @@ resetBtn.addEventListener('click', () => {
   repDepths = [];
   velocityHistory = [];
   stableStandingStartTime = null;
+  rebaselineStabilityCount = 0;
+  potentialNewBaseline = null;
+  trackingLossFrames = 0;
   
   if (!keepCalibration) {
     standingHipY = null;
@@ -183,14 +207,41 @@ function detectSquat(landmarks) {
   const rightHip = landmarks[24];
   const leftKnee = landmarks[25];
   const rightKnee = landmarks[26];
+  const leftAnkle = landmarks[27];
+  const rightAnkle = landmarks[28];
   
-  // Store debug info
   if (DEBUG_MODE) {
     debugInfo = {
-      leftHip: leftHip ? { x: leftHip.x.toFixed(3), y: leftHip.y.toFixed(3), vis: (leftHip.visibility || 0).toFixed(2) } : null,
-      rightHip: rightHip ? { x: rightHip.x.toFixed(3), y: rightHip.y.toFixed(3), vis: (rightHip.visibility || 0).toFixed(2) } : null,
-      leftKnee: leftKnee ? { x: leftKnee.x.toFixed(3), y: leftKnee.y.toFixed(3), vis: (leftKnee.visibility || 0).toFixed(2) } : null,
-      rightKnee: rightKnee ? { x: rightKnee.x.toFixed(3), y: rightKnee.y.toFixed(3), vis: (rightKnee.visibility || 0).toFixed(2) } : null,
+      leftHip: leftHip ? { 
+        x: leftHip.x.toFixed(3), 
+        y: leftHip.y.toFixed(3), 
+        vis: (leftHip.visibility || 0).toFixed(2) 
+      } : null,
+      rightHip: rightHip ? { 
+        x: rightHip.x.toFixed(3), 
+        y: rightHip.y.toFixed(3), 
+        vis: (rightHip.visibility || 0).toFixed(2) 
+      } : null,
+      leftKnee: leftKnee ? { 
+        x: leftKnee.x.toFixed(3), 
+        y: leftKnee.y.toFixed(3), 
+        vis: (leftKnee.visibility || 0).toFixed(2) 
+      } : null,
+      rightKnee: rightKnee ? { 
+        x: rightKnee.x.toFixed(3), 
+        y: rightKnee.y.toFixed(3), 
+        vis: (rightKnee.visibility || 0).toFixed(2) 
+      } : null,
+      leftAnkle: leftAnkle ? { 
+        x: leftAnkle.x.toFixed(3), 
+        y: leftAnkle.y.toFixed(3), 
+        vis: (leftAnkle.visibility || 0).toFixed(2) 
+      } : null,
+      rightAnkle: rightAnkle ? { 
+        x: rightAnkle.x.toFixed(3), 
+        y: rightAnkle.y.toFixed(3), 
+        vis: (rightAnkle.visibility || 0).toFixed(2) 
+      } : null,
       lockedSide: lockedSide,
       currentSide: currentSide
     };
@@ -204,32 +255,45 @@ function detectSquat(landmarks) {
     (rightKnee.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
   
   if (!leftValid && !rightValid) {
-    if (state !== 'standing' && stateStartTime && 
-        (performance.now() - stateStartTime) > MAX_STATE_TIME) {
+    trackingLossFrames++;
+    
+    if (state !== 'standing' && trackingLossFrames > TRACKING_LOSS_TOLERANCE_FRAMES) {
       feedbackEl.textContent = "Lost tracking - resetting";
       resetToStanding();
     }
     return;
   }
   
+  trackingLossFrames = 0;
+  
+  // FIXED: Use KNEE visibility for side detection (hips have bugged equal visibility)
   if (lockedSide === null) {
-    lockedSide = leftValid && (!rightValid || 
-      (leftHip.visibility || 0) > (rightHip.visibility || 0)) ? 'left' : 'right';
-  } else {
-    const currentVisibility = lockedSide === 'left' ? 
-      (leftHip.visibility || 0) : (rightHip.visibility || 0);
-    const otherSide = lockedSide === 'left' ? 'right' : 'left';
-    const otherVisibility = otherSide === 'left' ? 
-      (leftHip.visibility || 0) : (rightHip.visibility || 0);
+    // Use knee visibility since hip visibility is bugged
+    const leftKneeVis = leftKnee ? (leftKnee.visibility || 0) : 0;
+    const rightKneeVis = rightKnee ? (rightKnee.visibility || 0) : 0;
     
-    const shouldSwitch = (
-      (lockedSide === 'left' && !leftValid && rightValid) ||
-      (lockedSide === 'right' && !rightValid && leftValid)
-    ) && (otherVisibility - currentVisibility > SIDE_LOCK_CONFIDENCE_THRESHOLD);
+    if (leftValid && rightValid) {
+      // Both detected - use knee visibility to determine which side is actually visible
+      lockedSide = leftKneeVis > rightKneeVis ? 'left' : 'right';
+    } else if (leftValid) {
+      lockedSide = 'left';
+    } else if (rightValid) {
+      lockedSide = 'right';
+    }
+  } else {
+    // Allow side switching only when standing and there's clear evidence
+    const currentValid = (lockedSide === 'left') ? leftValid : rightValid;
+    const otherValid = (lockedSide === 'left') ? rightValid : leftValid;
+    
+    const currentKneeVis = (lockedSide === 'left') ? (leftKnee.visibility || 0) : (rightKnee.visibility || 0);
+    const otherKneeVis = (lockedSide === 'left') ? (rightKnee.visibility || 0) : (leftKnee.visibility || 0);
+    
+    const shouldSwitch = !currentValid && otherValid && 
+      (otherKneeVis - currentKneeVis > SIDE_LOCK_CONFIDENCE_THRESHOLD);
     
     if (shouldSwitch && state === 'standing') {
-      lockedSide = otherSide;
-      feedbackEl.textContent = `Switched to ${otherSide} side view`;
+      lockedSide = lockedSide === 'left' ? 'right' : 'left';
+      feedbackEl.textContent = `Switched to ${lockedSide} side view`;
     }
   }
   
@@ -241,6 +305,7 @@ function detectSquat(landmarks) {
   const hipY = hip.y;
   const kneeY = knee.y;
   
+  // ========== CALIBRATION ==========
   if (!isCalibrated && state === 'standing') {
     const currentHipKneeDist = Math.abs(kneeY - hipY);
     
@@ -264,28 +329,30 @@ function detectSquat(landmarks) {
     
     if (variation < tolerance) {
       calibrationHipYValues.push(hipY);
-      hipKneeDistance = hipKneeDistance * 0.8 + currentHipKneeDist * 0.2;
+      hipKneeDistance = hipKneeDistance * (1 - BASELINE_UPDATE_ALPHA) + currentHipKneeDist * BASELINE_UPDATE_ALPHA;
       feedbackEl.textContent = `Hold still... ${calibrationHipYValues.length}/${CALIBRATION_SAMPLES}`;
       
       if (calibrationHipYValues.length >= CALIBRATION_SAMPLES) {
         standingHipY = calibrationHipYValues.reduce((a, b) => a + b, 0) / calibrationHipYValues.length;
-        isCalibrated = true;
         stableFrameCount = STABILITY_FRAMES;
         stableStandingStartTime = performance.now();
         
         const expectedHipKneeInches = userHeightInches * HIP_KNEE_RATIO;
         inchesPerUnit = expectedHipKneeInches / hipKneeDistance;
         
+        isCalibrated = true;
+        
         const estimatedHipKneeInches = normToInches(hipKneeDistance);
         const feet = Math.floor(userHeightInches / 12);
         const inches = userHeightInches % 12;
-        feedbackEl.textContent = `✓ Calibrated! Height: ${feet}'${inches}", Hip-knee: ~${estimatedHipKneeInches.toFixed(1)}"`;
+        
+        feedbackEl.textContent = `✓ Calibrated! H:${feet}'${inches}" HK:${estimatedHipKneeInches.toFixed(1)}"`;
         
         setTimeout(() => {
           if (state === 'standing') {
             feedbackEl.textContent = "Ready to squat!";
           }
-        }, 1500);
+        }, 2000);
       }
     } else {
       calibrationHipYValues = [];
@@ -295,6 +362,7 @@ function detectSquat(landmarks) {
     return;
   }
   
+  // ========== VELOCITY TRACKING ==========
   if (prevHipY !== null) {
     const velocity = hipY - prevHipY;
     velocityHistory.push(velocity);
@@ -308,40 +376,32 @@ function detectSquat(landmarks) {
     ? velocityHistory.reduce((a, b) => a + b, 0) / velocityHistory.length
     : 0;
   
+  // ========== STATE TIMEOUT CHECK ==========
   if ((state === 'descending' || state === 'ascending') && stateStartTime) {
     const timeInState = performance.now() - stateStartTime;
     if (timeInState > MAX_STATE_TIME) {
-      feedbackEl.textContent = "Rep abandoned - resetting";
+      feedbackEl.textContent = "Rep stuck - auto reset";
       resetToStanding();
       return;
     }
   }
   
-  // Only check baseline stability when we're truly standing (not moving into a squat)
+  // ========== BASELINE STABILITY & DRIFT HANDLING ==========
   if (state === 'standing') {
     const distanceFromBaseline = Math.abs(hipY - standingHipY);
     const toleranceNorm = inchesToNorm(BASELINE_TOLERANCE_INCHES);
     const currentDepthNorm = hipY - standingHipY;
     const descentThresholdNorm = inchesToNorm(DESCENT_THRESHOLD_INCHES);
     
-    // If we're moving down toward a squat, don't treat it as drift
     const isStartingSquat = currentDepthNorm > descentThresholdNorm * 0.5;
     
     if (!isStartingSquat && distanceFromBaseline < toleranceNorm) {
       stableFrameCount = Math.min(STABILITY_FRAMES, stableFrameCount + 1);
+      rebaselineStabilityCount = 0;
+      potentialNewBaseline = null;
       
-      if (stableFrameCount >= STABILITY_FRAMES) {
-        if (stableStandingStartTime === null) {
-          stableStandingStartTime = performance.now();
-        }
-        
-        if (QUICK_CALIBRATION_MODE) {
-          const timeSinceLastRecal = performance.now() - lastStandingRecalibrationTime;
-          if (timeSinceLastRecal > 3000) {
-            standingHipY = standingHipY * 0.95 + hipY * 0.05;
-            lastStandingRecalibrationTime = performance.now();
-          }
-        }
+      if (stableFrameCount >= STABILITY_FRAMES && stableStandingStartTime === null) {
+        stableStandingStartTime = performance.now();
       }
     } else if (!isStartingSquat) {
       stableFrameCount = Math.max(0, stableFrameCount - 1);
@@ -349,37 +409,51 @@ function detectSquat(landmarks) {
       
       const driftInches = normToInches(distanceFromBaseline);
       
-      // CRITICAL FIX: If we've been stable at a new position for a while, re-baseline there
-      // This handles long walkouts where user ends up far from calibration position
-      if (stableFrameCount === 0 && driftInches > BASELINE_TOLERANCE_INCHES * 1.5) {
-        // Check if hip position is relatively stable (not moving much frame-to-frame)
-        const isStablePosition = velocityHistory.length >= 3 && 
-          Math.abs(avgVelocity) < VELOCITY_THRESHOLD * 2;
-        
-        if (isStablePosition) {
-          // User has settled into a new position - adopt it as the new baseline
-          standingHipY = standingHipY * 0.7 + hipY * 0.3; // Gradually shift baseline
-          feedbackEl.textContent = `Adjusting baseline... hold position`;
+      const isStablePosition = velocityHistory.length >= 3 && 
+        Math.abs(avgVelocity) < VELOCITY_THRESHOLD * 2;
+      
+      if (isStablePosition && driftInches > DRIFT_CRITICAL_THRESHOLD) {
+        if (potentialNewBaseline === null || Math.abs(hipY - potentialNewBaseline) < toleranceNorm * 0.5) {
+          potentialNewBaseline = hipY;
+          rebaselineStabilityCount++;
           
-          // Give them a head start on stability frames since they're already stable
-          stableFrameCount = Math.floor(STABILITY_FRAMES / 2);
-        } else if (driftInches > DRIFT_WARNING_THRESHOLD) {
-          feedbackEl.textContent = `⚠ ${driftInches.toFixed(1)}" from baseline - stand still`;
+          if (rebaselineStabilityCount >= REBASELINE_STABILITY_FRAMES) {
+            standingHipY = potentialNewBaseline;
+            stableFrameCount = STABILITY_FRAMES;
+            stableStandingStartTime = performance.now();
+            rebaselineStabilityCount = 0;
+            potentialNewBaseline = null;
+            feedbackEl.textContent = `✓ Position updated - ready to squat`;
+          } else {
+            feedbackEl.textContent = `Detecting new position... ${rebaselineStabilityCount}/${REBASELINE_STABILITY_FRAMES}`;
+          }
+        } else {
+          rebaselineStabilityCount = 0;
+          potentialNewBaseline = null;
         }
-      } else if (stableFrameCount > 0 && stableFrameCount < STABILITY_FRAMES) {
-        feedbackEl.textContent = `Stabilizing... ${stableFrameCount}/${STABILITY_FRAMES}`;
+      } else {
+        rebaselineStabilityCount = 0;
+        potentialNewBaseline = null;
+        
+        if (driftInches > DRIFT_WARNING_THRESHOLD) {
+          feedbackEl.textContent = `⚠ ${driftInches.toFixed(1)}" from baseline - stand still`;
+        } else if (stableFrameCount > 0 && stableFrameCount < STABILITY_FRAMES) {
+          feedbackEl.textContent = `Stabilizing... ${stableFrameCount}/${STABILITY_FRAMES}`;
+        }
       }
     } else if (stableFrameCount > 0 && stableFrameCount < STABILITY_FRAMES) {
       feedbackEl.textContent = `Stabilizing... ${stableFrameCount}/${STABILITY_FRAMES}`;
     }
   }
   
+  // ========== TRACK DEEPEST POINT ==========
   if (state === 'descending' || state === 'ascending') {
     if (deepestHipY === null || hipY > deepestHipY) {
       deepestHipY = hipY;
     }
   }
   
+  // ========== DEPTH CALCULATIONS ==========
   const currentDepthNorm = hipY - standingHipY;
   const currentDepthInches = normToInches(currentDepthNorm);
   
@@ -390,22 +464,27 @@ function detectSquat(landmarks) {
   const minDepthNorm = inchesToNorm(MIN_DEPTH_INCHES);
   const hysteresisNorm = inchesToNorm(HYSTERESIS_INCHES);
   
+  // ========== STATE MACHINE ==========
   switch (state) {
     case 'standing':
       const hasBeenStable = stableStandingStartTime && 
         (performance.now() - stableStandingStartTime) >= MIN_STANDING_TIME_MS;
-      const isIntentionalDescend = avgVelocity > DESCENT_VELOCITY_MIN;
       
-      if (currentDepthNorm > descentThresholdNorm + hysteresisNorm && 
-          hasBeenStable && 
-          isIntentionalDescend) {
+      const isMovingDown = avgVelocity > DESCENT_VELOCITY_MIN;
+      const wellPastThreshold = currentDepthNorm > descentThresholdNorm * DEPTH_TRIGGER_MULTIPLIER;
+      const isPastThreshold = currentDepthNorm > descentThresholdNorm + hysteresisNorm;
+      
+      if (isPastThreshold && hasBeenStable && (isMovingDown || wellPastThreshold)) {
         updateStatus('descending');
         deepestHipY = hipY;
         velocityHistory = [];
         stableStandingStartTime = null;
-        feedbackEl.textContent = "⬇ Descending...";
-      } else if (currentDepthNorm > descentThresholdNorm && !hasBeenStable && stableStandingStartTime) {
-        // Only show countdown if we have a valid start time
+        rebaselineStabilityCount = 0;
+        potentialNewBaseline = null;
+        
+        const quality = getDepthQuality(currentDepthInches);
+        feedbackEl.textContent = `⬇ Descending... ${quality.emoji}`;
+      } else if (isPastThreshold && !hasBeenStable && stableStandingStartTime) {
         const timeUntilReady = Math.ceil((MIN_STANDING_TIME_MS - 
           (performance.now() - stableStandingStartTime)) / 1000);
         if (timeUntilReady > 0) {
@@ -415,27 +494,44 @@ function detectSquat(landmarks) {
       break;
       
     case 'descending':
-      if (currentDepthNorm >= minDepthNorm) {
-        if (velocityHistory.length >= VELOCITY_WINDOW && avgVelocity < -VELOCITY_THRESHOLD) {
+      const descendQuality = getDepthQuality(currentDepthInches);
+      feedbackEl.textContent = `⬇ ${currentDepthInches.toFixed(1)}" ${descendQuality.emoji} ${descendQuality.label}`;
+      
+      if (velocityHistory.length >= VELOCITY_WINDOW && avgVelocity < -VELOCITY_THRESHOLD) {
+        if (maxDepthInches >= MIN_DEPTH_INCHES) {
           updateStatus('ascending');
           ascentStartTime = performance.now();
+          velocityHistory = [];
           
           const quality = getDepthQuality(maxDepthInches);
           feedbackEl.textContent = `⬆ Drive up! ${quality.emoji} ${quality.label}`;
+        } else {
+          feedbackEl.textContent = `⚠ Too shallow! Need at least ${MIN_DEPTH_INCHES}"`;
+          resetToStanding();
         }
-      } else if (velocityHistory.length >= VELOCITY_WINDOW && avgVelocity < -VELOCITY_THRESHOLD) {
-        feedbackEl.textContent = `⚠ Too shallow! Need at least ${MIN_DEPTH_INCHES}"`;
-        resetToStanding();
       }
       break;
       
     case 'ascending':
-      const recovered = deepestHipY - hipY;
-      const totalDepth = maxDepthNorm;
-      const recoveryPercent = (recovered / totalDepth) * 100;
+      if (deepestHipY === null || standingHipY === null) {
+        resetToStanding();
+        break;
+      }
       
-      if (recoveryPercent >= RECOVERY_PERCENT && 
-          currentDepthNorm < descentThresholdNorm - hysteresisNorm) {
+      const recovered = Math.max(0, deepestHipY - hipY);
+      const totalDepth = maxDepthNorm;
+      const recoveryPercent = totalDepth > 0 ? (recovered / totalDepth) * 100 : 0;
+      
+      if (recoveryPercent < RECOVERY_WARNING_THRESHOLD) {
+        feedbackEl.textContent = `⬆ Drive up! ${recoveryPercent.toFixed(0)}% recovery`;
+      } else if (recoveryPercent < RECOVERY_PERCENT) {
+        feedbackEl.textContent = `⬆ Almost there! ${recoveryPercent.toFixed(0)}% recovery`;
+      }
+      
+      const isAboveThreshold = currentDepthNorm < descentThresholdNorm - hysteresisNorm;
+      const hasMinDepth = maxDepthInches >= MIN_DEPTH_INCHES;
+      
+      if (recoveryPercent >= RECOVERY_PERCENT && isAboveThreshold && hasMinDepth) {
         const ascentTime = (performance.now() - ascentStartTime) / 1000;
         repTimes.push(ascentTime);
         repDepths.push(maxDepthInches);
@@ -468,190 +564,209 @@ function resetToStanding() {
   ascentStartTime = null;
   velocityHistory = [];
   stableStandingStartTime = null;
+  rebaselineStabilityCount = 0;
+  potentialNewBaseline = null;
+  trackingLossFrames = 0;
 }
 
 function drawPose(results) {
   ctx.save();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  if (!results.poseLandmarks || results.poseLandmarks.length === 0) {
+    ctx.restore();
+    return;
+  }
+  
   ctx.translate(canvas.width, 0);
   ctx.scale(-1, 1);
   
-  if (results.poseLandmarks) {
-    const landmarks = results.poseLandmarks;
+  const landmarks = results.poseLandmarks;
+  
+  if (DEBUG_MODE) {
+    const landmarksToShow = [
+      { idx: 11, name: 'L_Shoulder', color: '#FF00FF' },
+      { idx: 12, name: 'R_Shoulder', color: '#FF00FF' },
+      { idx: 23, name: 'L_Hip', color: '#FFD700' },
+      { idx: 24, name: 'R_Hip', color: '#FFD700' },
+      { idx: 25, name: 'L_Knee', color: '#00BFFF' },
+      { idx: 26, name: 'R_Knee', color: '#00BFFF' },
+      { idx: 27, name: 'L_Ankle', color: '#00FF00' },
+      { idx: 28, name: 'R_Ankle', color: '#00FF00' }
+    ];
     
-    // Draw ALL relevant landmarks in debug mode
-    if (DEBUG_MODE) {
-      // Draw all body landmarks with labels
-      const landmarksToShow = [
-        { idx: 11, name: 'L_Shoulder', color: '#FF00FF' },
-        { idx: 12, name: 'R_Shoulder', color: '#FF00FF' },
-        { idx: 23, name: 'L_Hip', color: '#FFD700' },
-        { idx: 24, name: 'R_Hip', color: '#FFD700' },
-        { idx: 25, name: 'L_Knee', color: '#00BFFF' },
-        { idx: 26, name: 'R_Knee', color: '#00BFFF' },
-        { idx: 27, name: 'L_Ankle', color: '#00FF00' },
-        { idx: 28, name: 'R_Ankle', color: '#00FF00' }
-      ];
-      
-      ctx.font = '12px Arial';
-      landmarksToShow.forEach(({ idx, name, color }) => {
-        const lm = landmarks[idx];
-        if (lm && (lm.visibility || 0) > 0.1) {
-          const x = lm.x * canvas.width;
-          const y = lm.y * canvas.height;
-          
-          // Draw circle
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.arc(x, y, 6, 0, 2 * Math.PI);
-          ctx.fill();
-          ctx.strokeStyle = '#FFF';
-          ctx.lineWidth = 1;
-          ctx.stroke();
-          
-          // Draw label (un-mirror the text)
-          ctx.save();
-          ctx.translate(x, y);
-          ctx.scale(-1, 1); // Un-mirror for text
-          ctx.fillStyle = '#FFF';
-          ctx.fillText(name, 10, -10);
-          ctx.fillText(`v:${(lm.visibility || 0).toFixed(2)}`, 10, 5);
-          ctx.restore();
-        }
-      });
-      
-      // Draw connections
-      const connections = [
-        [23, 25], // left hip to knee
-        [24, 26], // right hip to knee
-        [25, 27], // left knee to ankle
-        [26, 28]  // right knee to ankle
-      ];
-      
-      connections.forEach(([start, end]) => {
-        const lm1 = landmarks[start];
-        const lm2 = landmarks[end];
-        if (lm1 && lm2 && (lm1.visibility || 0) > 0.3 && (lm2.visibility || 0) > 0.3) {
-          ctx.beginPath();
-          ctx.moveTo(lm1.x * canvas.width, lm1.y * canvas.height);
-          ctx.lineTo(lm2.x * canvas.width, lm2.y * canvas.height);
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        }
-      });
-    }
-    
-    const leftHip = landmarks[23];
-    const rightHip = landmarks[24];
-    const leftKnee = landmarks[25];
-    const rightKnee = landmarks[26];
-    
-    const leftValid = leftHip && leftKnee && 
-      (leftHip.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD && 
-      (leftKnee.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
-    const rightValid = rightHip && rightKnee && 
-      (rightHip.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD && 
-      (rightKnee.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
-    
-    const useLeft = (currentSide === 'left');
-    const hip = useLeft ? leftHip : rightHip;
-    const knee = useLeft ? leftKnee : rightKnee;
-
-    if (hip && knee && ((useLeft && leftValid) || (!useLeft && rightValid))) {
-      // Draw TRACKED hip-knee line (the one used for measurement)
-      ctx.beginPath();
-      ctx.moveTo(hip.x * canvas.width, hip.y * canvas.height);
-      ctx.lineTo(knee.x * canvas.width, knee.y * canvas.height);
-      
-      if (state === 'descending') ctx.strokeStyle = '#FFA500';
-      else if (state === 'ascending') ctx.strokeStyle = '#00FF00';
-      else ctx.strokeStyle = '#00BFFF';
-      
-      ctx.lineWidth = 6; // Thicker for tracked landmarks
-      ctx.stroke();
-      
-      // Draw tracked hip with larger marker
-      ctx.fillStyle = '#FFD700';
-      ctx.beginPath();
-      ctx.arc(hip.x * canvas.width, hip.y * canvas.height, 14, 0, 2 * Math.PI);
-      ctx.fill();
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-
-      // Draw tracked knee with larger marker
-      ctx.fillStyle = '#00BFFF';
-      ctx.beginPath();
-      ctx.arc(knee.x * canvas.width, knee.y * canvas.height, 12, 0, 2 * Math.PI);
-      ctx.fill();
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-      
-      if (standingHipY && isCalibrated && inchesPerUnit) {
-        const standingPos = standingHipY * canvas.height;
+    ctx.font = '12px Arial';
+    landmarksToShow.forEach(({ idx, name, color }) => {
+      const lm = landmarks[idx];
+      if (lm && (lm.visibility || 0) > 0.1) {
+        const x = lm.x * canvas.width;
+        const y = lm.y * canvas.height;
         
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
+        ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.moveTo(0, standingPos);
-        ctx.lineTo(canvas.width, standingPos);
+        ctx.arc(x, y, 6, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = '#FFF';
+        ctx.lineWidth = 1;
         ctx.stroke();
-        ctx.setLineDash([]);
         
-        const depthMarkers = [
-          { inches: DEPTH_MARKER_HALF, color: 'rgba(255, 165, 0, 0.4)' },
-          { inches: DEPTH_MARKER_PARALLEL, color: 'rgba(255, 255, 0, 0.4)' },
-          { inches: DEPTH_MARKER_DEEP, color: 'rgba(0, 255, 0, 0.4)' }
-        ];
-        
-        depthMarkers.forEach(({ inches, color }) => {
-          const depthNorm = inchesToNorm(inches);
-          const depthY = standingPos + (depthNorm * canvas.height);
-          
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 1;
-          ctx.setLineDash([3, 3]);
-          ctx.beginPath();
-          ctx.moveTo(0, depthY);
-          ctx.lineTo(canvas.width, depthY);
-          ctx.stroke();
-        });
-        ctx.setLineDash([]);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(-1, 1);
+        ctx.fillStyle = '#FFF';
+        const displayName = name.startsWith('L_') ? 'R_' + name.substring(2) : 'L_' + name.substring(2);
+        ctx.fillText(displayName, 10, -10);
+        ctx.fillText(`v:${(lm.visibility || 0).toFixed(2)}`, 10, 5);
+        ctx.fillText(`y:${lm.y.toFixed(3)}`, 10, 20);
+        ctx.restore();
       }
+    });
+    
+    const connections = [
+      [23, 25], [24, 26], [25, 27], [26, 28]
+    ];
+    
+    connections.forEach(([start, end]) => {
+      const lm1 = landmarks[start];
+      const lm2 = landmarks[end];
+      if (lm1 && lm2 && (lm1.visibility || 0) > 0.3 && (lm2.visibility || 0) > 0.3) {
+        ctx.beginPath();
+        ctx.moveTo(lm1.x * canvas.width, lm1.y * canvas.height);
+        ctx.lineTo(lm2.x * canvas.width, lm2.y * canvas.height);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    });
+  }
+  
+  const leftHip = landmarks[23];
+  const rightHip = landmarks[24];
+  const leftKnee = landmarks[25];
+  const rightKnee = landmarks[26];
+  
+  const leftValid = leftHip && leftKnee && 
+    (leftHip.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD && 
+    (leftKnee.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
+  const rightValid = rightHip && rightKnee && 
+    (rightHip.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD && 
+    (rightKnee.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
+  
+  const useLeft = (currentSide === 'left');
+  const hip = useLeft ? leftHip : rightHip;
+  const knee = useLeft ? leftKnee : rightKnee;
+
+  if (hip && knee && ((useLeft && leftValid) || (!useLeft && rightValid))) {
+    ctx.beginPath();
+    ctx.moveTo(hip.x * canvas.width, hip.y * canvas.height);
+    ctx.lineTo(knee.x * canvas.width, knee.y * canvas.height);
+    
+    if (state === 'descending') ctx.strokeStyle = '#FFA500';
+    else if (state === 'ascending') ctx.strokeStyle = '#00FF00';
+    else ctx.strokeStyle = '#00BFFF';
+    
+    ctx.lineWidth = 6;
+    ctx.stroke();
+    
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath();
+    ctx.arc(hip.x * canvas.width, hip.y * canvas.height, 14, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.fillStyle = '#00BFFF';
+    ctx.beginPath();
+    ctx.arc(knee.x * canvas.width, knee.y * canvas.height, 12, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    
+    if (standingHipY && isCalibrated && inchesPerUnit) {
+      const standingPos = standingHipY * canvas.height;
+      
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(0, standingPos);
+      ctx.lineTo(canvas.width, standingPos);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      
+      const depthMarkers = [
+        { inches: DEPTH_MARKER_HALF, color: 'rgba(255, 165, 0, 0.4)' },
+        { inches: DEPTH_MARKER_PARALLEL, color: 'rgba(255, 255, 0, 0.4)' },
+        { inches: DEPTH_MARKER_DEEP, color: 'rgba(0, 255, 0, 0.4)' }
+      ];
+      
+      depthMarkers.forEach(({ inches, color }) => {
+        const depthNorm = inchesToNorm(inches);
+        const depthY = standingPos + (depthNorm * canvas.height);
+        
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(0, depthY);
+        ctx.lineTo(canvas.width, depthY);
+        ctx.stroke();
+      });
+      ctx.setLineDash([]);
+    }
+  }
+  
+  if (DEBUG_MODE && debugInfo.leftHip) {
+    ctx.save();
+    ctx.scale(-1, 1);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.fillRect(-canvas.width, 0, 350, 280);
+    
+    ctx.fillStyle = '#00FF00';
+    ctx.font = '11px monospace';
+    let y = 15;
+    
+    const displaySide = lockedSide === 'left' ? 'right' : 'left';
+    ctx.fillText(`Tracking: ${displaySide} side (camera view)`, -canvas.width + 10, y);
+    y += 15;
+    ctx.fillText(`Physical: ${lockedSide} side`, -canvas.width + 10, y);
+    y += 20;
+    
+    ctx.fillText(`L_Hip: x:${debugInfo.leftHip.x} y:${debugInfo.leftHip.y} v:${debugInfo.leftHip.vis}`, -canvas.width + 10, y);
+    y += 15;
+    ctx.fillText(`R_Hip: x:${debugInfo.rightHip.x} y:${debugInfo.rightHip.y} v:${debugInfo.rightHip.vis}`, -canvas.width + 10, y);
+    y += 15;
+    ctx.fillText(`L_Knee: x:${debugInfo.leftKnee.x} y:${debugInfo.leftKnee.y} v:${debugInfo.leftKnee.vis}`, -canvas.width + 10, y);
+    y += 15;
+    ctx.fillText(`R_Knee: x:${debugInfo.rightKnee.x} y:${debugInfo.rightKnee.y} v:${debugInfo.rightKnee.vis}`, -canvas.width + 10, y);
+    y += 15;
+    
+    if (debugInfo.leftAnkle) {
+      ctx.fillText(`L_Ankle: y:${debugInfo.leftAnkle.y} v:${debugInfo.leftAnkle.vis}`, -canvas.width + 10, y);
+      y += 15;
+    }
+    if (debugInfo.rightAnkle) {
+      ctx.fillText(`R_Ankle: y:${debugInfo.rightAnkle.y} v:${debugInfo.rightAnkle.vis}`, -canvas.width + 10, y);
+      y += 15;
     }
     
-    // Display debug info
-    if (DEBUG_MODE && debugInfo.leftHip) {
-      ctx.save();
-      ctx.scale(-1, 1); // Un-mirror for text
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.fillRect(-canvas.width, 0, 300, 180);
-      
-      ctx.fillStyle = '#00FF00';
-      ctx.font = '11px monospace';
-      let y = 15;
-      ctx.fillText(`Side: ${debugInfo.lockedSide} (${debugInfo.currentSide})`, -canvas.width + 10, y);
+    y += 10;
+    
+    if (isCalibrated) {
+      const hipKneePixels = hipKneeDistance * canvas.height;
+      const hipKneeInches = normToInches(hipKneeDistance);
+      ctx.fillText(`Hip-Knee: ${hipKneeInches.toFixed(1)}" (${hipKneePixels.toFixed(0)}px)`, -canvas.width + 10, y);
       y += 15;
-      ctx.fillText(`L_Hip: x:${debugInfo.leftHip.x} y:${debugInfo.leftHip.y} v:${debugInfo.leftHip.vis}`, -canvas.width + 10, y);
+      ctx.fillText(`Standing Y: ${(standingHipY * canvas.height).toFixed(0)}px`, -canvas.width + 10, y);
       y += 15;
-      ctx.fillText(`R_Hip: x:${debugInfo.rightHip.x} y:${debugInfo.rightHip.y} v:${debugInfo.rightHip.vis}`, -canvas.width + 10, y);
+      ctx.fillText(`Inches/Unit: ${inchesPerUnit.toFixed(2)}`, -canvas.width + 10, y);
       y += 15;
-      ctx.fillText(`L_Knee: x:${debugInfo.leftKnee.x} y:${debugInfo.leftKnee.y} v:${debugInfo.leftKnee.vis}`, -canvas.width + 10, y);
-      y += 15;
-      ctx.fillText(`R_Knee: x:${debugInfo.rightKnee.x} y:${debugInfo.rightKnee.y} v:${debugInfo.rightKnee.vis}`, -canvas.width + 10, y);
-      y += 20;
-      
-      if (isCalibrated) {
-        ctx.fillText(`Hip-Knee Dist: ${(hipKneeDistance * canvas.height).toFixed(0)}px`, -canvas.width + 10, y);
-        y += 15;
-        ctx.fillText(`Standing Y: ${(standingHipY * canvas.height).toFixed(0)}px`, -canvas.width + 10, y);
-      }
-      
-      ctx.restore();
+      ctx.fillText(`State: ${state}`, -canvas.width + 10, y);
     }
+    
+    ctx.restore();
   }
   
   ctx.restore();
@@ -663,7 +778,7 @@ function onResults(results) {
 
   drawPose(results);
   
-  if (results.poseLandmarks?.length) {
+  if (results.poseLandmarks && results.poseLandmarks.length) {
     detectSquat(results.poseLandmarks);
   }
 
