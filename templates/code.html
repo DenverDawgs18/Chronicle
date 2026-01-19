@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="../static/universal.css">
+  <link rel="stylesheet" href="../static/code.css">
+  <title>Enter Access Code - Chronicle</title>
+</head>
+<body>
+  <nav>
+    <div class="nav-container">
+      <a href="{{url_for('index')}}" class="nav-brand">CHRONICLE</a>
+      <div class="nav-links">
+        <a href="{{url_for('logout')}}" class="nav-link">Sign Out</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <div class="code-container">
+      <div class="code-card">
+        <h1>Access Code</h1>
+        <p class="subtitle">Enter your code to unlock lifetime access</p>
+
+        <div class="info-box">
+          Have an access code? Enter it below to get lifetime access to Chronicle without a subscription.
+        </div>
+
+        <div id="errorMessage" class="error-message"></div>
+        <div id="successMessage" class="success-message"></div>
+
+        <form id="codeForm">
+          <div class="form-group">
+            <label for="code">Access Code</label>
+            <input 
+              type="text" 
+              id="code" 
+              name="code" 
+              placeholder="Enter your code" 
+              required
+              autocomplete="off"
+            >
+          </div>
+
+          <button type="submit" class="submit-btn" id="submitBtn">Activate Access</button>
+        </form>
+
+        <div class="alt-action">
+          Don't have a code? <a href="/subscribe">Subscribe instead</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const form = document.getElementById('codeForm');
+    const errorMessage = document.getElementById('errorMessage');
+    const successMessage = document.getElementById('successMessage');
+    const submitBtn = document.getElementById('submitBtn');
+    const codeInput = document.getElementById('code');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const code = codeInput.value.trim();
+
+      errorMessage.classList.remove('show');
+      successMessage.classList.remove('show');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Checking...';
+
+      try {
+        const response = await fetch('/code', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ code })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          successMessage.textContent = 'Access granted! Redirecting...';
+          successMessage.classList.add('show');
+          setTimeout(() => {
+            window.location.href = '/tracker';
+          }, 1500);
+        } else {
+          errorMessage.textContent = data.error || 'Invalid code';
+          errorMessage.classList.add('show');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Activate Access';
+        }
+      } catch (error) {
+        errorMessage.textContent = 'An error occurred. Please try again.';
+        errorMessage.classList.add('show');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Activate Access';
+      }
+    });
+  </script>
+</body>
+</html>

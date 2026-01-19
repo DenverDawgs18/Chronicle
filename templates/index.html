@@ -1,59 +1,67 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="../static/styles.css">
-  <title>Enhanced Side Squat Tracker</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chronicle - Velocity Based Training</title>
+  <link rel="stylesheet" href="../static/universal.css">
+  <link rel="stylesheet" href="../static/index.css">
 </head>
 <body>
-<div id="video-container">
-    <video id="video" playsinline autoplay muted></video>
-    <canvas id="canvas" width="640" height="480"></canvas>
-  </div>
-
-  <div id="controls">
-    <div class="height-input-container">
-      <label for="heightSlider">Height:</label>
-      <div class="height-slider-wrapper">
-        <input type="range" id="heightSlider" min="48" max="84" value="68" step="1">
-        <span id="heightValue">5'8"</span>
+  <nav>
+    <div class="nav-container">
+      <a href="{{url_for('index')}}" class="nav-brand">CHRONICLE</a>
+      <div class="nav-links">
+        {% if current_user.is_authenticated %}
+          {% if current_user.subscribed %}
+            <a href="{{url_for('tracker')}}" class="nav-link primary">Tracker</a>
+            <a href="https://billing.stripe.com/p/login/5kQdRa84z2Pn4I5drc4wM00" class="nav-link primary">Manage Billing</a>
+          {% else %}
+            <a href="{{url_for('subscribe')}}" class="nav-link primary">Subscribe</a>
+          {% endif %}
+        {% else %}
+          <a href="{{url_for('login')}}" class="nav-link">Sign In</a>
+        {% endif %}
       </div>
     </div>
-    <button id="resetBtn">Reset Counter</button>
-  </div>
+  </nav>
+  <main>
+    <section class="hero">
+      <h1>Train Like the Pros</h1>
+      <p class="tagline">Without spending $1,000 on equipment</p>
+      <p class="subtext">Velocity based training powered by your phone camera. No sensors, no devices—just elite-level performance tracking in your pocket.</p>
+      {% if current_user.is_authenticated and current_user.subscribed %}
+        <a href="/tracker" class="cta-button">Start Tracking</a>
+      {% else %}
+        <a href="/subscribe" class="cta-button">Start Tracking</a>
+      {% endif %}
+    </section>
 
-  <div id="status" class="status-indicator status-standing">STANDING</div>
-  <div id="counter">Reps: 0</div>
-  
-  <div class="content-stack">
-    <div id="msg">Your rep speed will show up here</div>
-    <div id="feedback">Allow Camera for tracking</div>
-  </div>
+    <section class="features">
+      <div class="feature-card">
+        <div class="feature-icon">📱</div>
+        <h3>No Equipment Needed</h3>
+        <p>Your phone camera is all you need. No sensors, no special hardware, no complicated setup. Just open the app and start training.</p>
+      </div>
 
-  <!-- MediaPipe Libraries -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.1/drawing_utils.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.1/camera_utils.js"></script>
-  
-  <script>
-    // Height slider functionality
-    const heightSlider = document.getElementById('heightSlider');
-    const heightValue = document.getElementById('heightValue');
-    
-    function updateHeightDisplay(inches) {
-      const feet = Math.floor(inches / 12);
-      const remainingInches = inches % 12;
-      heightValue.textContent = `${feet}'${remainingInches}"`;
-    }
-    
-    heightSlider.addEventListener('input', (e) => {
-      updateHeightDisplay(parseInt(e.target.value));
-    });
-    
-    // Initialize display
-    updateHeightDisplay(parseInt(heightSlider.value));
-  </script>
-  <script src="../static/squat.js"></script>
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3>Know Your Fatigue</h3>
+        <p>Track bar velocity in real-time to understand your true fatigue levels. Train smarter by knowing when to push and when to back off.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3>Honest Depth Tracking</h3>
+        <p>Get objective feedback on squat depth. No more guessing—know exactly how deep you're going on every single rep.</p>
+      </div>
+    </section>
+
+    <section class="social-proof">
+      <span class="badge">Proven Performance</span>
+      <h2>Trusted by a 600lb Squatter</h2>
+      <p>Built by lifters, for lifters. Chronicle brings professional-grade velocity based training to everyone.</p>
+    </section>
+  </main>
 </body>
 </html>

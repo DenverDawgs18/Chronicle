@@ -90,6 +90,16 @@ function getUserHeightInches() {
   return parseInt(document.getElementById('heightSlider').value);
 }
 
+document.getElementById('heightSlider').addEventListener('change', (e) => { 
+  const heightInches = parseInt(e.target.value);
+  fetch('/set_height', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+  },
+    body: JSON.stringify({ height: heightInches }),
+  })});
+
 resetBtn.addEventListener('click', () => {
   const keepCalibration = isCalibrated && hipKneeDistance && standingHipY;
   
