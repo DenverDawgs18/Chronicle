@@ -274,10 +274,11 @@ stripe listen --forward-to localhost:5000/webhook
 ## Known Issues / Roadmap
 
 From `map.md`:
-- Simulator for sideways movement testing
-- UI overhaul needed
-- Add knee cave detection
-- Torso and shin angle tracking
+- Squat tracking fixes
+- Merging CSS
+- Improve onboarding speed
+- Writing tests
+- Simplifying HTML where possible (Jinja?)
 
 ## Security Notes
 

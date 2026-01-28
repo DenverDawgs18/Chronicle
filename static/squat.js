@@ -39,12 +39,15 @@ const MAX_DESCENT_TIME_MS = 6000;  // Stricter timeout for descending
 const MAX_ASCENT_TIME_MS = 6000;  // Stricter timeout for ascending
 const HORIZONTAL_MOVEMENT_THRESHOLD = 0.08;  // Ignore horizontal drift during standing
 
+// Position smoothing and outlier detection
+const POSITION_SMOOTHING_ALPHA = 0.3;  // Lower = more smoothing
+const OUTLIER_THRESHOLD_MULTIPLIER = 3.0;  // Reject jumps > 3x typical movement
+const MIN_FRAMES_FOR_OUTLIER_DETECTION = 5;
+const VELOCITY_EMA_ALPHA = 0.4;  // Exponential moving average for velocity
+
 // DEBUG MODE
 const DEBUG_MODE = true;
 // ======================================================================
-
-// TODO : Write tests for this file
-// TODO: Improve file wherever needed 
 
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
@@ -98,6 +101,13 @@ let lastSquatStartTime = null;
 let calibrationCompletedTime = null;
 let standingHipX = null;
 
+// Position smoothing state
+let smoothedHipY = null;
+let smoothedHipX = null;
+let positionHistory = [];
+let typicalMovementMagnitude = 0.01;  // Running estimate of normal frame-to-frame movement
+let smoothedVelocity = 0;  // EMA-smoothed velocity
+
 let debugInfo = {};
 
 function getUserHeightInches() {
@@ -116,7 +126,7 @@ document.getElementById('heightSlider').addEventListener('change', (e) => {
 
 resetBtn.addEventListener('click', () => {
   const keepCalibration = isCalibrated && hipKneeDistance && standingHipY;
-  
+
   repCount = 0;
   state = 'standing';
   deepestHipY = null;
@@ -133,7 +143,8 @@ resetBtn.addEventListener('click', () => {
   trackingLossFrames = 0;
   lastSquatStartTime = null;
   calibrationCompletedTime = null;
-  
+  smoothedVelocity = 0;
+
   if (!keepCalibration) {
     standingHipY = null;
     standingHipX = null;
@@ -142,11 +153,16 @@ resetBtn.addEventListener('click', () => {
     isCalibrated = false;
     calibrationHipYValues = [];
     lockedSide = null;
+    // Also reset smoothing state for full reset
+    smoothedHipY = null;
+    smoothedHipX = null;
+    positionHistory = [];
+    typicalMovementMagnitude = 0.01;
     feedbackEl.textContent = 'Counter reset! Stand sideways and stay still';
   } else {
     feedbackEl.textContent = 'Counter reset! Calibration kept - ready to squat';
   }
-  
+
   counterEl.textContent = 'Reps: 0';
   msgEl.innerHTML = '';
   updateStatus('standing');
@@ -178,6 +194,83 @@ function getDepthQuality(depthInches) {
   if (depthInches >= DEPTH_MARKER_PARALLEL) return { emoji: '✓', label: 'Parallel', color: '#90EE90' };
   if (depthInches >= DEPTH_MARKER_HALF) return { emoji: '~', label: 'Half', color: '#FFD700' };
   return { emoji: '⚠', label: 'Shallow', color: '#FFA500' };
+}
+
+/**
+ * Detect if a position change is an outlier (sudden jump)
+ * Returns true if the movement is abnormally large
+ */
+function isOutlierMovement(newY, previousY) {
+  if (previousY === null || positionHistory.length < MIN_FRAMES_FOR_OUTLIER_DETECTION) {
+    return false;
+  }
+
+  const movement = Math.abs(newY - previousY);
+  const threshold = typicalMovementMagnitude * OUTLIER_THRESHOLD_MULTIPLIER;
+
+  return movement > threshold;
+}
+
+/**
+ * Update the running estimate of typical movement magnitude
+ */
+function updateTypicalMovement(movement) {
+  if (positionHistory.length >= MIN_FRAMES_FOR_OUTLIER_DETECTION) {
+    // Use EMA to update typical movement
+    typicalMovementMagnitude = typicalMovementMagnitude * 0.95 + Math.abs(movement) * 0.05;
+    // Clamp to reasonable bounds
+    typicalMovementMagnitude = Math.max(0.001, Math.min(0.05, typicalMovementMagnitude));
+  }
+}
+
+/**
+ * Apply exponential moving average smoothing to position
+ */
+function smoothPosition(newValue, previousSmoothed, alpha = POSITION_SMOOTHING_ALPHA) {
+  if (previousSmoothed === null) {
+    return newValue;
+  }
+  return previousSmoothed * (1 - alpha) + newValue * alpha;
+}
+
+/**
+ * Process raw hip position with outlier filtering and smoothing
+ * Returns the processed position or null if rejected as outlier
+ */
+function processHipPosition(rawHipY, rawHipX) {
+  // Check for outlier
+  if (isOutlierMovement(rawHipY, smoothedHipY)) {
+    // Don't update position, keep previous smoothed value
+    if (DEBUG_MODE) {
+      console.log('Outlier detected, rejecting frame:', rawHipY, 'previous:', smoothedHipY);
+    }
+    return { hipY: smoothedHipY, hipX: smoothedHipX, rejected: true };
+  }
+
+  // Update typical movement magnitude
+  if (smoothedHipY !== null) {
+    updateTypicalMovement(rawHipY - smoothedHipY);
+  }
+
+  // Apply smoothing
+  smoothedHipY = smoothPosition(rawHipY, smoothedHipY);
+  smoothedHipX = smoothPosition(rawHipX, smoothedHipX);
+
+  // Track position history for outlier detection
+  positionHistory.push(rawHipY);
+  if (positionHistory.length > 30) {
+    positionHistory.shift();
+  }
+
+  return { hipY: smoothedHipY, hipX: smoothedHipX, rejected: false };
+}
+
+/**
+ * Calculate velocity with EMA smoothing for more stable readings
+ */
+function updateSmoothedVelocity(instantVelocity) {
+  smoothedVelocity = smoothedVelocity * (1 - VELOCITY_EMA_ALPHA) + instantVelocity * VELOCITY_EMA_ALPHA;
+  return smoothedVelocity;
 }
 
 function displayRepTimes() {
@@ -316,12 +409,21 @@ function detectSquat(landmarks) {
   
   const useLeft = (lockedSide === 'left');
   currentSide = lockedSide;
-  
+
   const hip = useLeft ? leftHip : rightHip;
   const knee = useLeft ? leftKnee : rightKnee;
-  const hipY = hip.y;
-  const hipX = hip.x;
+  const rawHipY = hip.y;
+  const rawHipX = hip.x;
   const kneeY = knee.y;
+
+  // Apply position smoothing and outlier filtering
+  const processed = processHipPosition(rawHipY, rawHipX);
+  if (processed.rejected && processed.hipY === null) {
+    // First frame was rejected, skip processing
+    return;
+  }
+  const hipY = processed.hipY;
+  const hipX = processed.hipX;
   
   // ========== AUTO-RECALIBRATION CHECK ==========
   if (isCalibrated && calibrationCompletedTime && state === 'standing' && lastSquatStartTime === null) {
@@ -402,16 +504,19 @@ function detectSquat(landmarks) {
   
   // ========== VELOCITY TRACKING ==========
   if (prevHipY !== null) {
-    const velocity = hipY - prevHipY;
-    velocityHistory.push(velocity);
+    const instantVelocity = hipY - prevHipY;
+    velocityHistory.push(instantVelocity);
     if (velocityHistory.length > VELOCITY_WINDOW) {
       velocityHistory.shift();
     }
+    // Update EMA-smoothed velocity
+    updateSmoothedVelocity(instantVelocity);
   }
   prevHipY = hipY;
-  
+
+  // Use EMA-smoothed velocity for more stable detection
   const avgVelocity = velocityHistory.length >= VELOCITY_WINDOW
-    ? velocityHistory.reduce((a, b) => a + b, 0) / velocityHistory.length
+    ? smoothedVelocity
     : 0;
   
   // ========== STATE TIMEOUT CHECK - STRICTER ==========
@@ -627,6 +732,7 @@ function resetToStanding() {
   rebaselineStabilityCount = 0;
   potentialNewBaseline = null;
   trackingLossFrames = 0;
+  smoothedVelocity = 0;
 }
 
 function drawPose(results) {
