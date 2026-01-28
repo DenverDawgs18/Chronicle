@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Chronicle{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='universal.css') }}">
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+  {% block nav %}
+  <nav>
+    <div class="nav-container">
+      <a href="{{ url_for('index') }}" class="nav-brand">CHRONICLE</a>
+      <div class="nav-links">
+        {% block nav_links %}
+        {% if current_user.is_authenticated %}
+          {% if current_user.subscribed %}
+            <a href="{{ url_for('tracker') }}" class="nav-link primary">Tracker</a>
+            <a href="{{ url_for('logout') }}" class="nav-link">Sign Out</a>
+          {% else %}
+            <a href="{{ url_for('subscribe') }}" class="nav-link primary">Subscribe</a>
+            <a href="{{ url_for('logout') }}" class="nav-link">Sign Out</a>
+          {% endif %}
+        {% else %}
+          <a href="{{ url_for('login') }}" class="nav-link">Sign In</a>
+        {% endif %}
+        {% endblock %}
+      </div>
+    </div>
+  </nav>
+  {% endblock %}
+
+  {% block body %}
+  <main class="{% block main_class %}{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+  {% endblock %}
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

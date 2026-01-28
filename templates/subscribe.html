@@ -1,97 +1,69 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Subscribe - Chronicle</title>
-  <link rel="stylesheet" href="../static/universal.css">
-  <link rel="stylesheet" href="../static/subscribe.css">
-</head>
-<body>
-  <nav>
-    <div class="nav-container">
-      <a href="{{url_for('index')}}" class="nav-brand">CHRONICLE</a>
-      <div class="nav-links">
-        {% if current_user.is_authenticated %}
-          <a href="/logout" class="nav-link">Sign Out</a>
-        {% else %}
-          <a href="/login" class="nav-link">Sign In</a>
-        {% endif %}
-      </div>
-    </div>
-  </nav>
-  <main>
-    <div class="subscribe-container">
-      <div class="subscribe-header">
-        <h1>Start Training Smarter</h1>
-        <p>Choose your plan and unlock velocity based training</p>
-      </div>
+{% extends "base.html" %}
+{% from "macros.html" import feature_item %}
 
-      <div class="pricing-cards">
-        <div class="pricing-card">
-          <h3>Monthly</h3>
-          <div class="price">$5<span>/month</span></div>
-          <ul class="features">
-            <li>Unlimited squat tracking</li>
-            <li>Real-time velocity feedback</li>
-            <li>Depth analysis</li>
-            <li>Rep counter</li>
-            <li>No equipment needed</li>
-          </ul>
-          {% if current_user.is_authenticated %}
-            <a href="{{ stripe_monthly_link }}" class="subscribe-btn">Get Started</a>
-          {% else %}
-            <a href="{{url_for('subscribe')}}" class="subscribe-btn">Sign In to Subscribe</a>
-          {% endif %}
-        </div>
+{% block title %}Subscribe - Chronicle{% endblock %}
 
-        <div class="pricing-card featured">
-          <h3>Annual</h3>
-          <div class="price">$30<span>/year</span></div>
-          <ul class="features">
-            <li>Everything in Monthly</li>
-            <li>Save $60 per year</li>
-            <li>Priority support</li>
-            <li>Early access to new features</li>
-            <li>Cancel anytime</li>
-          </ul>
-          {% if current_user.is_authenticated %}
-            <a href="{{ stripe_monthly_link }}" class="subscribe-btn">Get Started</a>
-          {% else %}
-            <a href="{{url_for('subscribe')}}" class="subscribe-btn">Sign In to Subscribe</a>
-          {% endif %}
-        </div>
-      </div>
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='subscribe.css') }}">
+{% endblock %}
 
-      <div class="features-section">
-        <h2>What You Get</h2>
-        <div class="features-grid">
-          <div class="feature-item">
-            <div class="icon">📱</div>
-            <h4>Phone Only</h4>
-            <p>No sensors or equipment required</p>
-          </div>
-          <div class="feature-item">
-            <div class="icon">⚡</div>
-            <h4>Real-Time Data</h4>
-            <p>Instant velocity and depth feedback</p>
-          </div>
-          <div class="feature-item">
-            <div class="icon">📊</div>
-            <h4>Track Progress</h4>
-            <p>Monitor fatigue and performance</p>
-          </div>
-          <div class="feature-item">
-            <div class="icon">🎯</div>
-            <h4>Honest Metrics</h4>
-            <p>Objective depth measurement</p>
-          </div>
-        </div>
-      </div>
-      {% if not current_user.is_authenticated %}
-        <div class="alt-action">Don't have an account? <a href="/login">Create one now</a></div>
+{% block main_class %}page-centered{% endblock %}
+
+{% block content %}
+<div class="subscribe-container">
+  <div class="subscribe-header">
+    <h1>Start Training Smarter</h1>
+    <p>Choose your plan and unlock velocity based training</p>
+  </div>
+
+  <div class="pricing-cards">
+    <div class="pricing-card">
+      <h3>Monthly</h3>
+      <div class="price">$5<span>/month</span></div>
+      <ul class="features">
+        <li>Unlimited squat tracking</li>
+        <li>Real-time velocity feedback</li>
+        <li>Depth analysis</li>
+        <li>Rep counter</li>
+        <li>No equipment needed</li>
+      </ul>
+      {% if current_user.is_authenticated %}
+        <a href="{{ stripe_monthly_link }}" class="btn-primary">Get Started</a>
+      {% else %}
+        <a href="{{ url_for('subscribe') }}" class="btn-primary">Sign In to Subscribe</a>
       {% endif %}
     </div>
-  </main>
-</body>
-</html>
+
+    <div class="pricing-card featured">
+      <h3>Annual</h3>
+      <div class="price">$30<span>/year</span></div>
+      <ul class="features">
+        <li>Everything in Monthly</li>
+        <li>Save $60 per year</li>
+        <li>Priority support</li>
+        <li>Early access to new features</li>
+        <li>Cancel anytime</li>
+      </ul>
+      {% if current_user.is_authenticated %}
+        <a href="{{ stripe_monthly_link }}" class="btn-primary">Get Started</a>
+      {% else %}
+        <a href="{{ url_for('subscribe') }}" class="btn-primary">Sign In to Subscribe</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="features-section">
+    <h2>What You Get</h2>
+    <div class="features-grid">
+      {{ feature_item("📱", "Phone Only", "No sensors or equipment required") }}
+      {{ feature_item("⚡", "Real-Time Data", "Instant velocity and depth feedback") }}
+      {{ feature_item("📊", "Track Progress", "Monitor fatigue and performance") }}
+      {{ feature_item("🎯", "Honest Metrics", "Objective depth measurement") }}
+    </div>
+  </div>
+
+  {% if not current_user.is_authenticated %}
+    <div class="alt-action">Don't have an account? <a href="{{ url_for('login') }}">Create one now</a></div>
+  {% endif %}
+</div>
+{% endblock %}
