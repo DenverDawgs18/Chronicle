@@ -3,3 +3,7 @@ db.txt
 todo.txt
 node_modules/
 coverage/
+__pycache__/
+*.pyc
+instance/
+migrations/__pycache__/
