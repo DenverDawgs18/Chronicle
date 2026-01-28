@@ -9,6 +9,8 @@ Chronicle is a **Velocity-Based Training (VBT) web application** that enables re
 - Real-time velocity feedback for athletes
 - Objective squat depth measurement
 - Speed score calculations for strength training
+- **Workout tracking dashboard** with set/rep history and analytics
+- Real-time sync between tracker and dashboard via BroadcastChannel
 
 ## Tech Stack
 
@@ -49,16 +51,19 @@ Chronicle/
 │   ├── index.html              # Landing page
 │   ├── login.html              # Login/register page
 │   ├── tracker.html            # Main squat tracking interface
+│   ├── dashboard.html          # Workout history and analytics dashboard
 │   ├── subscribe.html          # Pricing/subscription page
 │   ├── code.html               # Access code redemption
 │   └── setup_password.html     # Post-payment password setup
 ├── static/                     # Frontend assets
-│   ├── squat.js                # Core tracking logic (~935 lines)
+│   ├── squat.js                # Core tracking logic + workout integration
+│   ├── dashboard.js            # Dashboard logic, API calls, real-time sync
 │   ├── login.js                # Auth form handling
 │   ├── universal.css           # Shared styles
 │   ├── index.css               # Landing page styles
 │   ├── login.css               # Auth page styles
 │   ├── tracker.css             # Tracker UI styles
+│   ├── dashboard.css           # Dashboard glassmorphism styles
 │   ├── code.css                # Access code page styles
 │   └── subscribe.css           # Subscription page styles
 ├── migrations/                 # Alembic database migrations
@@ -73,15 +78,18 @@ Chronicle/
 
 | File | Purpose |
 |------|---------|
-| `app.py` | All Flask routes, database models, Stripe webhooks |
-| `static/squat.js` | MediaPipe pose detection, squat state machine, velocity calculations |
-| `templates/tracker.html` | Main UI with video canvas and controls |
+| `app.py` | All Flask routes, database models (User, Workout, Set, Rep), Stripe webhooks |
+| `static/squat.js` | MediaPipe pose detection, squat state machine, velocity calculations, workout integration |
+| `static/dashboard.js` | Dashboard logic, workout/set APIs, real-time BroadcastChannel sync |
+| `templates/tracker.html` | Main UI with video canvas, controls, and save set functionality |
+| `templates/dashboard.html` | Workout history, stats overview, current workout management |
 | `fly.toml` | Deployment configuration for Fly.io |
 
-## Database Model
+## Database Models
 
-The application uses a single `User` model:
+The application uses four SQLAlchemy models:
 
+### User Model
 ```python
 User:
   - id: Integer (primary key)
@@ -95,6 +103,51 @@ User:
   - needs_password_setup: Boolean
   - created_at: DateTime
   - last_login: DateTime
+  - workouts: Relationship (one-to-many with Workout)
+```
+
+### Workout Model
+```python
+Workout:
+  - id: Integer (primary key)
+  - user_id: Integer (foreign key to User)
+  - name: String (default: 'Squat Session')
+  - exercise_type: String (default: 'squat')
+  - notes: Text (optional)
+  - created_at: DateTime
+  - completed_at: DateTime (null until finished)
+  - sets: Relationship (one-to-many with Set)
+  - Methods: to_dict() returns workout with sets and calculated totals
+```
+
+### Set Model
+```python
+Set:
+  - id: Integer (primary key)
+  - workout_id: Integer (foreign key to Workout)
+  - set_number: Integer
+  - reps_completed: Integer
+  - avg_depth: Float (inches)
+  - avg_velocity: Float (speed score)
+  - min_velocity: Float
+  - max_velocity: Float
+  - fatigue_drop: Float (velocity % decline from first to last rep)
+  - created_at: DateTime
+  - reps: Relationship (one-to-many with Rep)
+  - Methods: to_dict() returns set with all rep details
+```
+
+### Rep Model
+```python
+Rep:
+  - id: Integer (primary key)
+  - set_id: Integer (foreign key to Set)
+  - rep_number: Integer
+  - depth: Float (inches)
+  - time_seconds: Float (ascent duration)
+  - velocity: Float (speed score)
+  - quality: String ('deep', 'parallel', 'half', 'shallow')
+  - Methods: to_dict() returns individual rep data
 ```
 
 ## API Routes
@@ -113,11 +166,25 @@ User:
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `/tracker` | GET | Main VBT application |
+| `/dashboard` | GET | Workout history and analytics dashboard |
 | `/logout` | GET | Session termination |
 | `/code` | GET/POST | Access code redemption |
 | `/setup-password` | GET/POST | Password setup for new users |
 | `/set_height` | POST | Update user height (JSON API) |
 | `/api/subscription-status` | GET | Check subscription (JSON API) |
+
+### Workout API Routes (JSON)
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/workouts` | GET | List all user workouts (paginated) |
+| `/api/workouts` | POST | Create new workout |
+| `/api/workouts/<id>` | GET | Get specific workout details |
+| `/api/workouts/<id>` | PUT | Update workout (name, notes, complete) |
+| `/api/workouts/<id>` | DELETE | Delete workout (cascade deletes sets/reps) |
+| `/api/workouts/<id>/sets` | POST | Add completed set with rep data |
+| `/api/workouts/<id>/sets/<set_id>` | DELETE | Delete specific set |
+| `/api/workouts/current` | GET | Get active incomplete workout or null |
+| `/api/stats` | GET | Get user statistics (totals, velocity trend) |
 
 ## Environment Variables
 
@@ -166,6 +233,45 @@ standing → descending → ascending → (rep counted) → standing
 - Velocity-based rep timing
 - Horizontal drift detection
 - Auto-recalibration after inactivity
+
+## Workout Tracking Dashboard
+
+The dashboard provides workout history tracking and analytics with real-time sync to the tracker.
+
+### Dashboard Features
+- **Stats Overview**: Total workouts, sets, reps, and average velocity with animated counters
+- **Current Workout**: Active session with live set list, editable title, finish button
+- **Workout History**: Paginated list of completed workouts with expandable details
+- **Set Metrics**: Reps, average depth, average speed, fatigue drop percentage
+
+### Tracker Integration
+Key functions added to `squat.js` for workout persistence:
+- `initWorkout()` - Fetches/creates current workout on page load
+- `recordRep(time, depth, velocity, quality)` - Stores rep data during set
+- `saveSet()` - POSTs completed set to API, broadcasts to dashboard
+
+### Real-time Sync
+The tracker and dashboard communicate via BroadcastChannel:
+```javascript
+// Channel name
+const channel = new BroadcastChannel('chronicle-workout');
+
+// Tracker posts when set saved
+channel.postMessage({ type: 'SET_ADDED', set: setData });
+
+// Dashboard listens and refreshes
+channel.onmessage = (event) => {
+  if (event.data.type === 'SET_ADDED') {
+    loadCurrentWorkout();
+    loadStats();
+  }
+};
+```
+
+### UI Components (tracker.html)
+- Navigation bar with back link to dashboard
+- Set counter badge (e.g., "Set 1", "Set 2")
+- "Save Set" button with pulse animation when reps recorded
 
 ## Development Workflow
 
@@ -259,6 +365,9 @@ Key functions in `squat.js`:
 - `updateStatus(newState)` - State transitions
 - `resetToStanding()` - Reset tracking state
 - `calculateSpeedScore()` - Velocity calculations
+- `initWorkout()` - Initialize/fetch current workout
+- `recordRep()` - Store rep data for set saving
+- `saveSet()` - Save completed set to API
 
 ### Testing Payments
 
