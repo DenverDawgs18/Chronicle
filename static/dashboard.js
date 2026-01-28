@@ -6,6 +6,9 @@ let workouts = [];
 let currentPage = 1;
 let totalPages = 1;
 let workoutToDelete = null;
+let selectedMetrics = [];
+let availableMetrics = [];
+let liftStats = {};
 
 // DOM Elements
 const totalWorkoutsEl = document.getElementById('totalWorkouts');
@@ -33,12 +36,21 @@ const newWorkoutBtn = document.getElementById('newWorkoutBtn');
 const startWorkoutBtn = document.getElementById('startWorkoutBtn');
 const finishWorkoutBtn = document.getElementById('finishWorkoutBtn');
 
+// Lift stats elements
+const liftStatsGrid = document.getElementById('liftStatsGrid');
+const customizeMetricsBtn = document.getElementById('customizeMetricsBtn');
+const metricsModal = document.getElementById('metricsModal');
+const metricsOptions = document.getElementById('metricsOptions');
+const cancelMetricsBtn = document.getElementById('cancelMetricsBtn');
+const saveMetricsBtn = document.getElementById('saveMetricsBtn');
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   await Promise.all([
     loadStats(),
     loadCurrentWorkout(),
-    loadWorkoutHistory()
+    loadWorkoutHistory(),
+    loadLiftStats()
   ]);
 
   setupEventListeners();
@@ -70,6 +82,20 @@ function setupEventListeners() {
   cancelDeleteBtn.addEventListener('click', closeDeleteModal);
   confirmDeleteBtn.addEventListener('click', confirmDelete);
   deleteModal.querySelector('.modal-backdrop').addEventListener('click', closeDeleteModal);
+
+  // Metrics customization
+  if (customizeMetricsBtn) {
+    customizeMetricsBtn.addEventListener('click', showMetricsModal);
+  }
+  if (cancelMetricsBtn) {
+    cancelMetricsBtn.addEventListener('click', () => metricsModal.classList.add('hidden'));
+  }
+  if (saveMetricsBtn) {
+    saveMetricsBtn.addEventListener('click', saveMetrics);
+  }
+  if (metricsModal) {
+    metricsModal.querySelector('.modal-backdrop').addEventListener('click', () => metricsModal.classList.add('hidden'));
+  }
 }
 
 // API Helpers
@@ -425,6 +451,132 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// ========== Lift Stats & Metrics Customization ==========
+
+async function loadLiftStats() {
+  // First load user's selected metrics
+  const metricsData = await api('/api/dashboard/metrics');
+  if (metricsData.success) {
+    selectedMetrics = metricsData.selected_metrics || [];
+    availableMetrics = metricsData.available_metrics || [];
+  }
+
+  // If no metrics selected, use defaults
+  if (selectedMetrics.length === 0) {
+    selectedMetrics = ['squat', 'bench', 'deadlift'];
+  }
+
+  // Load lift stats
+  const statsData = await api('/api/dashboard/lift-stats');
+  if (statsData.success) {
+    liftStats = statsData.stats;
+  }
+
+  renderLiftStats();
+}
+
+function renderLiftStats() {
+  if (!liftStatsGrid) return;
+
+  // If no stats and no metrics, show empty state
+  if (Object.keys(liftStats).length === 0 && selectedMetrics.length <= 3) {
+    liftStatsGrid.innerHTML = selectedMetrics.map(metric => `
+      <div class="lift-stat-card">
+        <div class="lift-stat-name">${metric}</div>
+        <div class="lift-stat-value lift-stat-empty">-</div>
+        <div class="lift-stat-meta">No data yet</div>
+      </div>
+    `).join('');
+    return;
+  }
+
+  // Render stats for selected metrics
+  liftStatsGrid.innerHTML = selectedMetrics.map(metric => {
+    const stat = liftStats[metric.toLowerCase()];
+    if (stat) {
+      let valueDisplay = '-';
+      let unitDisplay = '';
+      let metaDisplay = '';
+
+      if (stat.max_weight) {
+        valueDisplay = stat.max_weight;
+        unitDisplay = ' lbs';
+        metaDisplay = `Max | ${stat.total_sets} sets logged`;
+      } else if (stat.avg_velocity) {
+        valueDisplay = stat.avg_velocity;
+        metaDisplay = `Avg Speed | ${stat.total_sets} sets`;
+      } else if (stat.total_sets > 0) {
+        valueDisplay = stat.total_sets;
+        metaDisplay = 'Total sets';
+      }
+
+      return `
+        <div class="lift-stat-card">
+          <div class="lift-stat-name">${stat.name || metric}</div>
+          <div class="lift-stat-value">${valueDisplay}<span class="lift-stat-unit">${unitDisplay}</span></div>
+          <div class="lift-stat-meta">${metaDisplay}</div>
+        </div>
+      `;
+    } else {
+      return `
+        <div class="lift-stat-card">
+          <div class="lift-stat-name">${metric}</div>
+          <div class="lift-stat-value lift-stat-empty">-</div>
+          <div class="lift-stat-meta">No data yet</div>
+        </div>
+      `;
+    }
+  }).join('');
+}
+
+function showMetricsModal() {
+  if (!metricsModal || !metricsOptions) return;
+
+  // Combine available metrics with selected ones
+  const allMetrics = new Set([...availableMetrics, ...selectedMetrics]);
+
+  metricsOptions.innerHTML = Array.from(allMetrics).sort().map(metric => `
+    <div class="metric-option ${selectedMetrics.includes(metric) ? 'selected' : ''}" data-metric="${metric}">
+      <div class="metric-checkbox"></div>
+      <span class="metric-name">${metric}</span>
+    </div>
+  `).join('');
+
+  // Add click handlers
+  metricsOptions.querySelectorAll('.metric-option').forEach(el => {
+    el.addEventListener('click', () => {
+      el.classList.toggle('selected');
+    });
+  });
+
+  metricsModal.classList.remove('hidden');
+}
+
+async function saveMetrics() {
+  const selected = Array.from(metricsOptions.querySelectorAll('.metric-option.selected'))
+    .map(el => el.dataset.metric);
+
+  if (selected.length < 3) {
+    alert('Please select at least 3 metrics');
+    return;
+  }
+  if (selected.length > 6) {
+    alert('Please select no more than 6 metrics');
+    return;
+  }
+
+  const data = await api('/api/dashboard/metrics', {
+    method: 'PUT',
+    body: JSON.stringify({ metrics: selected })
+  });
+
+  if (data.success) {
+    selectedMetrics = data.metrics;
+    renderLiftStats();
+    metricsModal.classList.add('hidden');
+  }
 }
 
 // Expose functions to global scope for onclick handlers

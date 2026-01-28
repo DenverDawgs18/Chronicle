@@ -7,7 +7,9 @@ import stripe
 import os
 from dotenv import load_dotenv
 from datetime import datetime
+import json
 import jinja2
+from functools import wraps
 
 load_dotenv()
 
@@ -42,6 +44,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
+    name = db.Column(db.String(100), nullable=True)  # Display name
     subscribed = db.Column(db.Boolean, default=False)
     stripe_customer_id = db.Column(db.String(255), nullable=True)
     subscription_type = db.Column(db.String(50), nullable=True)  # 'monthly' or 'annual'
@@ -49,13 +52,37 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime, nullable=True)
     height = db.Column(db.Integer, default=58)  # Default height in inches
-    needs_password_setup = db.Column(db.Boolean, default=False)  # NEW: Flag for users created via payment
+    needs_password_setup = db.Column(db.Boolean, default=False)  # Flag for users created via payment
+
+    # Coach system
+    is_coach = db.Column(db.Boolean, default=False)
+    coach_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # For athletes linked to a coach
+
+    # Dashboard customization - JSON string of metric names
+    dashboard_metrics = db.Column(db.Text, nullable=True)  # e.g. '["squat", "bench", "deadlift"]'
+
+    # Relationships
+    athletes = db.relationship('User', backref=db.backref('coach', remote_side=[id]), lazy='dynamic')
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+    def get_dashboard_metrics(self):
+        if self.dashboard_metrics:
+            try:
+                return json.loads(self.dashboard_metrics)
+            except:
+                return []
+        return []
+
+    def set_dashboard_metrics(self, metrics):
+        self.dashboard_metrics = json.dumps(metrics[:6])  # Max 6 metrics
+
+    def get_display_name(self):
+        return self.name or self.email.split('@')[0]
 
 
 class Workout(db.Model):
@@ -134,6 +161,143 @@ class Rep(db.Model):
         }
 
 
+# ========== Program Models ==========
+
+class Program(db.Model):
+    """A training program created by a coach for an athlete, or by a user for themselves"""
+    id = db.Column(db.Integer, primary_key=True)
+    coach_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # Null if self-created
+    athlete_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    start_date = db.Column(db.DateTime, nullable=True)
+    end_date = db.Column(db.DateTime, nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+
+    # Relationships
+    coach = db.relationship('User', foreign_keys=[coach_id], backref='programs_created')
+    athlete = db.relationship('User', foreign_keys=[athlete_id], backref='programs_assigned')
+    days = db.relationship('ProgramDay', backref='program', lazy='dynamic', order_by='ProgramDay.day_number', cascade='all, delete-orphan')
+
+    def to_dict(self, include_days=True):
+        result = {
+            'id': self.id,
+            'coach_id': self.coach_id,
+            'athlete_id': self.athlete_id,
+            'name': self.name,
+            'description': self.description,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'start_date': self.start_date.isoformat() if self.start_date else None,
+            'end_date': self.end_date.isoformat() if self.end_date else None,
+            'is_active': self.is_active
+        }
+        if include_days:
+            result['days'] = [d.to_dict() for d in self.days]
+        return result
+
+
+class ProgramDay(db.Model):
+    """A single day/session within a program"""
+    id = db.Column(db.Integer, primary_key=True)
+    program_id = db.Column(db.Integer, db.ForeignKey('program.id'), nullable=False)
+    day_number = db.Column(db.Integer, nullable=False)  # 1, 2, 3, etc.
+    name = db.Column(db.String(100), nullable=True)  # e.g., "Lower Body", "Upper Body"
+    notes = db.Column(db.Text, nullable=True)
+
+    exercises = db.relationship('ProgramExercise', backref='day', lazy='dynamic', order_by='ProgramExercise.order', cascade='all, delete-orphan')
+
+    def to_dict(self, include_exercises=True):
+        result = {
+            'id': self.id,
+            'program_id': self.program_id,
+            'day_number': self.day_number,
+            'name': self.name,
+            'notes': self.notes
+        }
+        if include_exercises:
+            result['exercises'] = [e.to_dict() for e in self.exercises]
+        return result
+
+
+class ProgramExercise(db.Model):
+    """An exercise within a program day"""
+    id = db.Column(db.Integer, primary_key=True)
+    program_day_id = db.Column(db.Integer, db.ForeignKey('program_day.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    video_url = db.Column(db.String(500), nullable=True)  # Only coaches can set this
+    sets_prescribed = db.Column(db.Integer, default=3)
+    reps_prescribed = db.Column(db.String(50), default='8-10')  # Can be range like "8-10" or "5"
+    weight_prescribed = db.Column(db.String(100), nullable=True)  # e.g., "135 lbs", "RPE 8", "70%"
+    notes = db.Column(db.Text, nullable=True)
+    order = db.Column(db.Integer, default=0)
+    exercise_type = db.Column(db.String(50), default='standard')  # 'standard', 'squat_velocity'
+
+    set_logs = db.relationship('ProgramSetLog', backref='exercise', lazy='dynamic', cascade='all, delete-orphan')
+
+    def to_dict(self, include_logs=False):
+        result = {
+            'id': self.id,
+            'program_day_id': self.program_day_id,
+            'name': self.name,
+            'video_url': self.video_url,
+            'sets_prescribed': self.sets_prescribed,
+            'reps_prescribed': self.reps_prescribed,
+            'weight_prescribed': self.weight_prescribed,
+            'notes': self.notes,
+            'order': self.order,
+            'exercise_type': self.exercise_type
+        }
+        if include_logs:
+            result['set_logs'] = [l.to_dict() for l in self.set_logs.order_by(ProgramSetLog.created_at.desc()).limit(20)]
+        return result
+
+
+class ProgramSetLog(db.Model):
+    """Logged performance for a set in a program exercise"""
+    id = db.Column(db.Integer, primary_key=True)
+    program_exercise_id = db.Column(db.Integer, db.ForeignKey('program_exercise.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    set_number = db.Column(db.Integer, nullable=False)
+    reps_completed = db.Column(db.Integer, nullable=True)
+    weight = db.Column(db.Float, nullable=True)  # Weight in lbs
+    weight_unit = db.Column(db.String(10), default='lbs')  # 'lbs' or 'kg'
+    rpe = db.Column(db.Float, nullable=True)  # Rate of Perceived Exertion
+    notes = db.Column(db.Text, nullable=True)
+
+    # Velocity tracking link
+    velocity_tracked = db.Column(db.Boolean, default=False)
+    workout_set_id = db.Column(db.Integer, db.ForeignKey('set.id'), nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = db.relationship('User', backref='program_logs')
+    workout_set = db.relationship('Set', backref='program_log')
+
+    def to_dict(self):
+        result = {
+            'id': self.id,
+            'program_exercise_id': self.program_exercise_id,
+            'user_id': self.user_id,
+            'set_number': self.set_number,
+            'reps_completed': self.reps_completed,
+            'weight': self.weight,
+            'weight_unit': self.weight_unit,
+            'rpe': self.rpe,
+            'notes': self.notes,
+            'velocity_tracked': self.velocity_tracked,
+            'workout_set_id': self.workout_set_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None
+        }
+        # Include velocity data if tracked
+        if self.velocity_tracked and self.workout_set:
+            result['velocity_data'] = self.workout_set.to_dict()
+        return result
+
+
 # Create tables
 with app.app_context():
     db.create_all()
@@ -141,6 +305,19 @@ with app.app_context():
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+
+def coach_required(f):
+    """Decorator to require coach access"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('login'))
+        if not current_user.is_coach:
+            return jsonify({'error': 'Coach access required'}), 403
+        return f(*args, **kwargs)
+    return decorated_function
+
 
 @app.template_filter('format_height')
 def format_height(height):
@@ -157,28 +334,34 @@ def index():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
+        if current_user.is_coach:
+            return redirect(url_for('coach_dashboard'))
         return redirect(url_for('tracker') if current_user.subscribed else url_for('subscribe'))
-    
+
     if request.method == 'POST':
         data = request.get_json()
         email = data.get('email', '').lower().strip()
         password = data.get('password', '')
-        
+
         if not email or not password:
             return jsonify({'error': 'Email and password required'}), 400
-        
+
         user = User.query.filter_by(email=email).first()
-        
+
         if user and user.check_password(password):
             login_user(user, remember=True)
             user.last_login = datetime.utcnow()
             db.session.commit()
-            
-            redirect_url = url_for('tracker') if user.subscribed else url_for('subscribe')
+
+            # Redirect coaches to coach dashboard
+            if user.is_coach:
+                redirect_url = url_for('coach_dashboard')
+            else:
+                redirect_url = url_for('dashboard') if user.subscribed else url_for('subscribe')
             return jsonify({'success': True, 'redirect': redirect_url})
         else:
             return jsonify({'error': 'Invalid email or password'}), 401
-    
+
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -648,6 +831,736 @@ def get_stats():
             'total_sets': total_sets,
             'total_reps': total_reps,
             'avg_velocity': round(avg_velocity) if avg_velocity else None
+        }
+    })
+
+
+# ========== Coach Dashboard & Routes ==========
+
+@app.route('/coach')
+@login_required
+def coach_dashboard():
+    """Coach dashboard showing athletes and their stats"""
+    if not current_user.is_coach:
+        return redirect(url_for('dashboard'))
+    return render_template('coach_dashboard.html')
+
+
+@app.route('/api/coach/athletes', methods=['GET'])
+@login_required
+@coach_required
+def get_coach_athletes():
+    """Get all athletes assigned to this coach"""
+    athletes = User.query.filter_by(coach_id=current_user.id).all()
+    athlete_data = []
+    for athlete in athletes:
+        # Get athlete stats
+        total_workouts = Workout.query.filter_by(user_id=athlete.id).count()
+        total_sets = db.session.query(Set).join(Workout).filter(Workout.user_id == athlete.id).count()
+
+        # Recent velocity
+        recent_sets = db.session.query(Set).join(Workout)\
+            .filter(Workout.user_id == athlete.id)\
+            .order_by(Set.created_at.desc()).limit(5).all()
+        avg_velocity = None
+        if recent_sets:
+            velocities = [s.avg_velocity for s in recent_sets if s.avg_velocity]
+            if velocities:
+                avg_velocity = sum(velocities) / len(velocities)
+
+        athlete_data.append({
+            'id': athlete.id,
+            'email': athlete.email,
+            'name': athlete.get_display_name(),
+            'total_workouts': total_workouts,
+            'total_sets': total_sets,
+            'avg_velocity': round(avg_velocity) if avg_velocity else None,
+            'last_login': athlete.last_login.isoformat() if athlete.last_login else None
+        })
+
+    return jsonify({'success': True, 'athletes': athlete_data})
+
+
+@app.route('/api/coach/athletes/<int:athlete_id>', methods=['GET'])
+@login_required
+@coach_required
+def get_athlete_details(athlete_id):
+    """Get detailed info for a specific athlete"""
+    athlete = User.query.filter_by(id=athlete_id, coach_id=current_user.id).first()
+    if not athlete:
+        return jsonify({'error': 'Athlete not found'}), 404
+
+    # Get recent workouts
+    workouts = Workout.query.filter_by(user_id=athlete.id)\
+        .order_by(Workout.created_at.desc()).limit(10).all()
+
+    # Get programs
+    programs = Program.query.filter_by(athlete_id=athlete.id, coach_id=current_user.id)\
+        .order_by(Program.created_at.desc()).all()
+
+    return jsonify({
+        'success': True,
+        'athlete': {
+            'id': athlete.id,
+            'email': athlete.email,
+            'name': athlete.get_display_name(),
+            'height': athlete.height,
+            'created_at': athlete.created_at.isoformat() if athlete.created_at else None,
+            'last_login': athlete.last_login.isoformat() if athlete.last_login else None
+        },
+        'workouts': [w.to_dict() for w in workouts],
+        'programs': [p.to_dict(include_days=False) for p in programs]
+    })
+
+
+@app.route('/api/coach/add-athlete', methods=['POST'])
+@login_required
+@coach_required
+def add_athlete():
+    """Add an athlete to this coach (by email)"""
+    data = request.get_json()
+    email = data.get('email', '').lower().strip()
+
+    if not email:
+        return jsonify({'error': 'Email required'}), 400
+
+    athlete = User.query.filter_by(email=email).first()
+    if not athlete:
+        return jsonify({'error': 'User not found'}), 404
+
+    if athlete.is_coach:
+        return jsonify({'error': 'Cannot add a coach as athlete'}), 400
+
+    if athlete.coach_id:
+        return jsonify({'error': 'Athlete already has a coach'}), 400
+
+    athlete.coach_id = current_user.id
+    db.session.commit()
+
+    print(f"✅ Athlete {email} added to coach {current_user.email}")
+    return jsonify({'success': True, 'message': f'{athlete.get_display_name()} added as athlete'})
+
+
+@app.route('/api/coach/remove-athlete/<int:athlete_id>', methods=['DELETE'])
+@login_required
+@coach_required
+def remove_athlete(athlete_id):
+    """Remove an athlete from this coach"""
+    athlete = User.query.filter_by(id=athlete_id, coach_id=current_user.id).first()
+    if not athlete:
+        return jsonify({'error': 'Athlete not found'}), 404
+
+    athlete.coach_id = None
+    db.session.commit()
+
+    return jsonify({'success': True})
+
+
+# ========== Program Routes ==========
+
+@app.route('/programs')
+@login_required
+def programs_page():
+    """Programs page for users to view their assigned programs"""
+    return render_template('programs.html')
+
+
+@app.route('/api/programs', methods=['GET'])
+@login_required
+def get_programs():
+    """Get programs for the current user (as athlete or coach-created)"""
+    if current_user.is_coach:
+        # Coaches see programs they've created
+        programs = Program.query.filter_by(coach_id=current_user.id)\
+            .order_by(Program.created_at.desc()).all()
+    else:
+        # Athletes see programs assigned to them
+        programs = Program.query.filter_by(athlete_id=current_user.id)\
+            .order_by(Program.created_at.desc()).all()
+
+    return jsonify({'success': True, 'programs': [p.to_dict(include_days=False) for p in programs]})
+
+
+@app.route('/api/programs', methods=['POST'])
+@login_required
+def create_program():
+    """Create a new program"""
+    data = request.get_json()
+
+    if current_user.is_coach:
+        # Coach creating for an athlete
+        athlete_id = data.get('athlete_id')
+        if not athlete_id:
+            return jsonify({'error': 'athlete_id required'}), 400
+
+        athlete = User.query.filter_by(id=athlete_id, coach_id=current_user.id).first()
+        if not athlete:
+            return jsonify({'error': 'Athlete not found'}), 404
+
+        program = Program(
+            coach_id=current_user.id,
+            athlete_id=athlete_id,
+            name=data.get('name', 'Training Program'),
+            description=data.get('description')
+        )
+    else:
+        # User creating for themselves
+        program = Program(
+            coach_id=None,
+            athlete_id=current_user.id,
+            name=data.get('name', 'My Program'),
+            description=data.get('description')
+        )
+
+    db.session.add(program)
+    db.session.commit()
+
+    print(f"✅ Program '{program.name}' created by {current_user.email}")
+    return jsonify({'success': True, 'program': program.to_dict()}), 201
+
+
+@app.route('/api/programs/<int:program_id>', methods=['GET'])
+@login_required
+def get_program(program_id):
+    """Get a specific program with all details"""
+    program = Program.query.get(program_id)
+    if not program:
+        return jsonify({'error': 'Program not found'}), 404
+
+    # Check access
+    if program.athlete_id != current_user.id and program.coach_id != current_user.id:
+        return jsonify({'error': 'Access denied'}), 403
+
+    return jsonify({'success': True, 'program': program.to_dict()})
+
+
+@app.route('/api/programs/<int:program_id>', methods=['PUT'])
+@login_required
+def update_program(program_id):
+    """Update a program"""
+    program = Program.query.get(program_id)
+    if not program:
+        return jsonify({'error': 'Program not found'}), 404
+
+    # Only coach or self-created can edit
+    if program.coach_id and program.coach_id != current_user.id:
+        return jsonify({'error': 'Only the coach can edit this program'}), 403
+    if not program.coach_id and program.athlete_id != current_user.id:
+        return jsonify({'error': 'Access denied'}), 403
+
+    data = request.get_json()
+    if 'name' in data:
+        program.name = data['name']
+    if 'description' in data:
+        program.description = data['description']
+    if 'is_active' in data:
+        program.is_active = data['is_active']
+
+    db.session.commit()
+    return jsonify({'success': True, 'program': program.to_dict()})
+
+
+@app.route('/api/programs/<int:program_id>', methods=['DELETE'])
+@login_required
+def delete_program(program_id):
+    """Delete a program"""
+    program = Program.query.get(program_id)
+    if not program:
+        return jsonify({'error': 'Program not found'}), 404
+
+    # Only coach or self-created can delete
+    if program.coach_id and program.coach_id != current_user.id:
+        return jsonify({'error': 'Only the coach can delete this program'}), 403
+    if not program.coach_id and program.athlete_id != current_user.id:
+        return jsonify({'error': 'Access denied'}), 403
+
+    db.session.delete(program)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+# ========== Program Day Routes ==========
+
+@app.route('/api/programs/<int:program_id>/days', methods=['POST'])
+@login_required
+def add_program_day(program_id):
+    """Add a day to a program"""
+    program = Program.query.get(program_id)
+    if not program:
+        return jsonify({'error': 'Program not found'}), 404
+
+    # Check write access
+    can_edit = (program.coach_id == current_user.id) or \
+               (not program.coach_id and program.athlete_id == current_user.id)
+    if not can_edit:
+        return jsonify({'error': 'Access denied'}), 403
+
+    data = request.get_json()
+    last_day = ProgramDay.query.filter_by(program_id=program_id)\
+        .order_by(ProgramDay.day_number.desc()).first()
+    day_number = (last_day.day_number + 1) if last_day else 1
+
+    day = ProgramDay(
+        program_id=program_id,
+        day_number=day_number,
+        name=data.get('name', f'Day {day_number}'),
+        notes=data.get('notes')
+    )
+    db.session.add(day)
+    db.session.commit()
+
+    return jsonify({'success': True, 'day': day.to_dict()}), 201
+
+
+@app.route('/api/programs/<int:program_id>/days/<int:day_id>', methods=['PUT'])
+@login_required
+def update_program_day(program_id, day_id):
+    """Update a program day"""
+    day = ProgramDay.query.filter_by(id=day_id, program_id=program_id).first()
+    if not day:
+        return jsonify({'error': 'Day not found'}), 404
+
+    program = day.program
+    can_edit = (program.coach_id == current_user.id) or \
+               (not program.coach_id and program.athlete_id == current_user.id)
+    if not can_edit:
+        return jsonify({'error': 'Access denied'}), 403
+
+    data = request.get_json()
+    if 'name' in data:
+        day.name = data['name']
+    if 'notes' in data:
+        day.notes = data['notes']
+
+    db.session.commit()
+    return jsonify({'success': True, 'day': day.to_dict()})
+
+
+@app.route('/api/programs/<int:program_id>/days/<int:day_id>', methods=['DELETE'])
+@login_required
+def delete_program_day(program_id, day_id):
+    """Delete a program day"""
+    day = ProgramDay.query.filter_by(id=day_id, program_id=program_id).first()
+    if not day:
+        return jsonify({'error': 'Day not found'}), 404
+
+    program = day.program
+    can_edit = (program.coach_id == current_user.id) or \
+               (not program.coach_id and program.athlete_id == current_user.id)
+    if not can_edit:
+        return jsonify({'error': 'Access denied'}), 403
+
+    db.session.delete(day)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+# ========== Program Exercise Routes ==========
+
+@app.route('/api/program-days/<int:day_id>/exercises', methods=['POST'])
+@login_required
+def add_exercise(day_id):
+    """Add an exercise to a program day"""
+    day = ProgramDay.query.get(day_id)
+    if not day:
+        return jsonify({'error': 'Day not found'}), 404
+
+    program = day.program
+    can_edit = (program.coach_id == current_user.id) or \
+               (not program.coach_id and program.athlete_id == current_user.id)
+    if not can_edit:
+        return jsonify({'error': 'Access denied'}), 403
+
+    data = request.get_json()
+    last_ex = ProgramExercise.query.filter_by(program_day_id=day_id)\
+        .order_by(ProgramExercise.order.desc()).first()
+    order = (last_ex.order + 1) if last_ex else 0
+
+    exercise = ProgramExercise(
+        program_day_id=day_id,
+        name=data.get('name', 'Exercise'),
+        sets_prescribed=data.get('sets_prescribed', 3),
+        reps_prescribed=data.get('reps_prescribed', '8-10'),
+        weight_prescribed=data.get('weight_prescribed'),
+        notes=data.get('notes'),
+        order=order,
+        exercise_type=data.get('exercise_type', 'standard')
+    )
+
+    # Only coaches can set video URLs
+    if current_user.is_coach and data.get('video_url'):
+        exercise.video_url = data['video_url']
+
+    db.session.add(exercise)
+    db.session.commit()
+
+    return jsonify({'success': True, 'exercise': exercise.to_dict()}), 201
+
+
+@app.route('/api/exercises/<int:exercise_id>', methods=['PUT'])
+@login_required
+def update_exercise(exercise_id):
+    """Update an exercise"""
+    exercise = ProgramExercise.query.get(exercise_id)
+    if not exercise:
+        return jsonify({'error': 'Exercise not found'}), 404
+
+    program = exercise.day.program
+    can_edit = (program.coach_id == current_user.id) or \
+               (not program.coach_id and program.athlete_id == current_user.id)
+    if not can_edit:
+        return jsonify({'error': 'Access denied'}), 403
+
+    data = request.get_json()
+    for field in ['name', 'sets_prescribed', 'reps_prescribed', 'weight_prescribed', 'notes', 'order', 'exercise_type']:
+        if field in data:
+            setattr(exercise, field, data[field])
+
+    # Only coaches can set video URLs
+    if current_user.is_coach and 'video_url' in data:
+        exercise.video_url = data['video_url']
+
+    db.session.commit()
+    return jsonify({'success': True, 'exercise': exercise.to_dict()})
+
+
+@app.route('/api/exercises/<int:exercise_id>', methods=['DELETE'])
+@login_required
+def delete_exercise(exercise_id):
+    """Delete an exercise"""
+    exercise = ProgramExercise.query.get(exercise_id)
+    if not exercise:
+        return jsonify({'error': 'Exercise not found'}), 404
+
+    program = exercise.day.program
+    can_edit = (program.coach_id == current_user.id) or \
+               (not program.coach_id and program.athlete_id == current_user.id)
+    if not can_edit:
+        return jsonify({'error': 'Access denied'}), 403
+
+    db.session.delete(exercise)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+# ========== Program Set Log Routes ==========
+
+@app.route('/api/exercises/<int:exercise_id>/log', methods=['POST'])
+@login_required
+def log_set(exercise_id):
+    """Log a completed set for an exercise"""
+    exercise = ProgramExercise.query.get(exercise_id)
+    if not exercise:
+        return jsonify({'error': 'Exercise not found'}), 404
+
+    program = exercise.day.program
+    # Only the athlete can log sets
+    if program.athlete_id != current_user.id:
+        return jsonify({'error': 'Only the athlete can log sets'}), 403
+
+    data = request.get_json()
+
+    # Get next set number
+    last_log = ProgramSetLog.query.filter_by(
+        program_exercise_id=exercise_id,
+        user_id=current_user.id
+    ).order_by(ProgramSetLog.set_number.desc()).first()
+    set_number = data.get('set_number', (last_log.set_number + 1) if last_log else 1)
+
+    log = ProgramSetLog(
+        program_exercise_id=exercise_id,
+        user_id=current_user.id,
+        set_number=set_number,
+        reps_completed=data.get('reps_completed'),
+        weight=data.get('weight'),
+        weight_unit=data.get('weight_unit', 'lbs'),
+        rpe=data.get('rpe'),
+        notes=data.get('notes'),
+        velocity_tracked=data.get('velocity_tracked', False),
+        workout_set_id=data.get('workout_set_id')
+    )
+    db.session.add(log)
+    db.session.commit()
+
+    return jsonify({'success': True, 'log': log.to_dict()}), 201
+
+
+@app.route('/api/exercises/<int:exercise_id>/log/<int:log_id>', methods=['PUT'])
+@login_required
+def update_set_log(exercise_id, log_id):
+    """Update a logged set"""
+    log = ProgramSetLog.query.filter_by(id=log_id, program_exercise_id=exercise_id).first()
+    if not log:
+        return jsonify({'error': 'Log not found'}), 404
+
+    if log.user_id != current_user.id:
+        return jsonify({'error': 'Access denied'}), 403
+
+    data = request.get_json()
+    for field in ['reps_completed', 'weight', 'weight_unit', 'rpe', 'notes']:
+        if field in data:
+            setattr(log, field, data[field])
+
+    db.session.commit()
+    return jsonify({'success': True, 'log': log.to_dict()})
+
+
+@app.route('/api/exercises/<int:exercise_id>/log/<int:log_id>', methods=['DELETE'])
+@login_required
+def delete_set_log(exercise_id, log_id):
+    """Delete a logged set"""
+    log = ProgramSetLog.query.filter_by(id=log_id, program_exercise_id=exercise_id).first()
+    if not log:
+        return jsonify({'error': 'Log not found'}), 404
+
+    if log.user_id != current_user.id:
+        return jsonify({'error': 'Access denied'}), 403
+
+    db.session.delete(log)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@app.route('/api/exercises/<int:exercise_id>/logs', methods=['GET'])
+@login_required
+def get_exercise_logs(exercise_id):
+    """Get all logs for an exercise"""
+    exercise = ProgramExercise.query.get(exercise_id)
+    if not exercise:
+        return jsonify({'error': 'Exercise not found'}), 404
+
+    program = exercise.day.program
+    # Check access
+    if program.athlete_id != current_user.id and program.coach_id != current_user.id:
+        return jsonify({'error': 'Access denied'}), 403
+
+    # Filter by user if athlete, show all if coach
+    if current_user.is_coach:
+        logs = ProgramSetLog.query.filter_by(program_exercise_id=exercise_id)\
+            .order_by(ProgramSetLog.created_at.desc()).all()
+    else:
+        logs = ProgramSetLog.query.filter_by(
+            program_exercise_id=exercise_id,
+            user_id=current_user.id
+        ).order_by(ProgramSetLog.created_at.desc()).all()
+
+    return jsonify({'success': True, 'logs': [l.to_dict() for l in logs]})
+
+
+# ========== Velocity Tracked Set Management ==========
+
+@app.route('/api/sets/<int:set_id>/reps', methods=['POST'])
+@login_required
+def add_rep_to_set(set_id):
+    """Add a rep to an existing set (non-velocity)"""
+    workout_set = Set.query.get(set_id)
+    if not workout_set:
+        return jsonify({'error': 'Set not found'}), 404
+
+    workout = workout_set.workout
+    if workout.user_id != current_user.id:
+        return jsonify({'error': 'Access denied'}), 403
+
+    data = request.get_json()
+
+    # Get next rep number
+    last_rep = Rep.query.filter_by(set_id=set_id).order_by(Rep.rep_number.desc()).first()
+    rep_number = (last_rep.rep_number + 1) if last_rep else 1
+
+    # Add rep without velocity (velocity must come from tracker)
+    rep = Rep(
+        set_id=set_id,
+        rep_number=rep_number,
+        depth=data.get('depth'),
+        quality=data.get('quality')
+        # Note: time_seconds and velocity are NOT settable manually
+    )
+    db.session.add(rep)
+
+    # Update set stats
+    workout_set.reps_completed = workout_set.reps.count() + 1
+    db.session.commit()
+
+    # Recalculate averages
+    reps = workout_set.reps.all()
+    depths = [r.depth for r in reps if r.depth]
+    velocities = [r.velocity for r in reps if r.velocity]
+    workout_set.avg_depth = sum(depths) / len(depths) if depths else None
+    workout_set.avg_velocity = sum(velocities) / len(velocities) if velocities else None
+    workout_set.min_velocity = min(velocities) if velocities else None
+    workout_set.max_velocity = max(velocities) if velocities else None
+    db.session.commit()
+
+    return jsonify({'success': True, 'rep': rep.to_dict(), 'set': workout_set.to_dict()}), 201
+
+
+@app.route('/api/sets/<int:set_id>/reps/<int:rep_id>', methods=['DELETE'])
+@login_required
+def delete_rep_from_set(set_id, rep_id):
+    """Delete a rep from a set"""
+    workout_set = Set.query.get(set_id)
+    if not workout_set:
+        return jsonify({'error': 'Set not found'}), 404
+
+    workout = workout_set.workout
+    if workout.user_id != current_user.id:
+        return jsonify({'error': 'Access denied'}), 403
+
+    rep = Rep.query.filter_by(id=rep_id, set_id=set_id).first()
+    if not rep:
+        return jsonify({'error': 'Rep not found'}), 404
+
+    db.session.delete(rep)
+
+    # Update set stats
+    workout_set.reps_completed = max(0, workout_set.reps_completed - 1)
+    db.session.commit()
+
+    # Recalculate averages
+    reps = workout_set.reps.all()
+    if reps:
+        depths = [r.depth for r in reps if r.depth]
+        velocities = [r.velocity for r in reps if r.velocity]
+        workout_set.avg_depth = sum(depths) / len(depths) if depths else None
+        workout_set.avg_velocity = sum(velocities) / len(velocities) if velocities else None
+        workout_set.min_velocity = min(velocities) if velocities else None
+        workout_set.max_velocity = max(velocities) if velocities else None
+    else:
+        workout_set.avg_depth = None
+        workout_set.avg_velocity = None
+        workout_set.min_velocity = None
+        workout_set.max_velocity = None
+
+    db.session.commit()
+
+    return jsonify({'success': True, 'set': workout_set.to_dict()})
+
+
+# ========== Enhanced Stats & Dashboard Customization ==========
+
+@app.route('/api/dashboard/metrics', methods=['GET'])
+@login_required
+def get_dashboard_metrics():
+    """Get customizable dashboard metrics for the user"""
+    metrics = current_user.get_dashboard_metrics()
+
+    # Get available metrics based on logged exercises
+    logs = db.session.query(ProgramSetLog.program_exercise_id)\
+        .filter(ProgramSetLog.user_id == current_user.id)\
+        .distinct().all()
+
+    available_metrics = set()
+    for (ex_id,) in logs:
+        ex = ProgramExercise.query.get(ex_id)
+        if ex:
+            available_metrics.add(ex.name.lower())
+
+    # Add default metrics
+    available_metrics.update(['squat', 'bench', 'deadlift', 'vertical', 'rsi'])
+
+    return jsonify({
+        'success': True,
+        'selected_metrics': metrics,
+        'available_metrics': sorted(list(available_metrics))
+    })
+
+
+@app.route('/api/dashboard/metrics', methods=['PUT'])
+@login_required
+def update_dashboard_metrics():
+    """Update the user's dashboard metrics selection"""
+    data = request.get_json()
+    metrics = data.get('metrics', [])
+
+    if not isinstance(metrics, list):
+        return jsonify({'error': 'metrics must be a list'}), 400
+
+    if len(metrics) < 3:
+        return jsonify({'error': 'Select at least 3 metrics'}), 400
+    if len(metrics) > 6:
+        return jsonify({'error': 'Maximum 6 metrics allowed'}), 400
+
+    current_user.set_dashboard_metrics(metrics)
+    db.session.commit()
+
+    return jsonify({'success': True, 'metrics': current_user.get_dashboard_metrics()})
+
+
+@app.route('/api/dashboard/lift-stats', methods=['GET'])
+@login_required
+def get_lift_stats():
+    """Get comprehensive lift statistics for dashboard"""
+    stats = {}
+
+    # Get all exercises the user has logged
+    exercise_names = db.session.query(ProgramExercise.name)\
+        .join(ProgramSetLog, ProgramExercise.id == ProgramSetLog.program_exercise_id)\
+        .filter(ProgramSetLog.user_id == current_user.id)\
+        .distinct().all()
+
+    for (name,) in exercise_names:
+        # Get logs for this exercise
+        logs = ProgramSetLog.query.join(ProgramExercise)\
+            .filter(
+                ProgramExercise.name == name,
+                ProgramSetLog.user_id == current_user.id
+            ).order_by(ProgramSetLog.created_at.desc()).all()
+
+        if logs:
+            weights = [l.weight for l in logs if l.weight]
+            velocities = []
+            for l in logs:
+                if l.velocity_tracked and l.workout_set:
+                    if l.workout_set.avg_velocity:
+                        velocities.append(l.workout_set.avg_velocity)
+
+            stats[name.lower()] = {
+                'name': name,
+                'total_sets': len(logs),
+                'max_weight': max(weights) if weights else None,
+                'recent_weight': weights[0] if weights else None,
+                'avg_velocity': round(sum(velocities) / len(velocities)) if velocities else None,
+                'last_logged': logs[0].created_at.isoformat() if logs else None
+            }
+
+    # Add squat velocity from workouts if not in programs
+    if 'squat' not in stats:
+        squat_sets = db.session.query(Set).join(Workout)\
+            .filter(Workout.user_id == current_user.id)\
+            .order_by(Set.created_at.desc()).limit(50).all()
+
+        if squat_sets:
+            velocities = [s.avg_velocity for s in squat_sets if s.avg_velocity]
+            stats['squat'] = {
+                'name': 'Squat',
+                'total_sets': len(squat_sets),
+                'max_weight': None,
+                'recent_weight': None,
+                'avg_velocity': round(sum(velocities) / len(velocities)) if velocities else None,
+                'last_logged': squat_sets[0].created_at.isoformat() if squat_sets else None
+            }
+
+    return jsonify({'success': True, 'stats': stats})
+
+
+@app.route('/api/user/profile', methods=['PUT'])
+@login_required
+def update_profile():
+    """Update user profile"""
+    data = request.get_json()
+
+    if 'name' in data:
+        current_user.name = data['name']
+    if 'height' in data:
+        current_user.height = data['height']
+
+    db.session.commit()
+    return jsonify({
+        'success': True,
+        'user': {
+            'name': current_user.name,
+            'email': current_user.email,
+            'height': current_user.height
         }
     })
 

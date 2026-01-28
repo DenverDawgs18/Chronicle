@@ -15,9 +15,14 @@
       <div class="nav-links">
         {% block nav_links %}
         {% if current_user.is_authenticated %}
-          {% if current_user.subscribed %}
+          {% if current_user.is_coach %}
+            <a href="{{ url_for('coach_dashboard') }}" class="nav-link primary">Dashboard</a>
+            <a href="{{ url_for('programs_page') }}" class="nav-link">Programs</a>
+            <a href="{{ url_for('logout') }}" class="nav-link">Sign Out</a>
+          {% elif current_user.subscribed %}
             <a href="{{ url_for('tracker') }}" class="nav-link">Tracker</a>
             <a href="{{ url_for('dashboard') }}" class="nav-link primary">Dashboard</a>
+            <a href="{{ url_for('programs_page') }}" class="nav-link">Programs</a>
             <a href="{{ url_for('logout') }}" class="nav-link">Sign Out</a>
           {% else %}
             <a href="{{ url_for('subscribe') }}" class="nav-link primary">Subscribe</a>

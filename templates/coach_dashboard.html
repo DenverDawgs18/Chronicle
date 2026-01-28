@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Coach Dashboard - Chronicle{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='coach_dashboard.css') }}">
+{% endblock %}
+
+{% block nav_links %}
+<a href="{{ url_for('coach_dashboard') }}" class="nav-link primary">Dashboard</a>
+<a href="{{ url_for('programs_page') }}" class="nav-link">Programs</a>
+<a href="{{ url_for('logout') }}" class="nav-link">Sign Out</a>
+{% endblock %}
+
+{% block main_class %}coach-main{% endblock %}
+
+{% block content %}
+<div class="coach-container">
+  <!-- Header -->
+  <section class="coach-header">
+    <div class="header-info">
+      <h1>Coach Dashboard</h1>
+      <p>Manage your athletes and create training programs</p>
+    </div>
+    <button id="addAthleteBtn" class="btn-primary">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+        <circle cx="8.5" cy="7" r="4"/>
+        <line x1="20" y1="8" x2="20" y2="14"/>
+        <line x1="23" y1="11" x2="17" y2="11"/>
+      </svg>
+      Add Athlete
+    </button>
+  </section>
+
+  <!-- Athletes Grid -->
+  <section class="athletes-section">
+    <h2>Your Athletes</h2>
+    <div id="athletesGrid" class="athletes-grid">
+      <div class="loading-placeholder">Loading athletes...</div>
+    </div>
+    <div id="noAthletes" class="empty-state hidden">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+      <p>No athletes yet</p>
+      <p class="subtext">Add athletes by their email address to start coaching</p>
+    </div>
+  </section>
+
+  <!-- Athlete Detail Panel -->
+  <div id="athleteDetail" class="athlete-detail-panel hidden">
+    <div class="panel-header">
+      <button id="closeDetailBtn" class="btn-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+      <h2 id="athleteName">Athlete Name</h2>
+    </div>
+    <div class="panel-content">
+      <div class="athlete-stats" id="athleteStats"></div>
+      <div class="athlete-programs">
+        <div class="programs-header">
+          <h3>Programs</h3>
+          <button id="createProgramBtn" class="btn-secondary">Create Program</button>
+        </div>
+        <div id="athletePrograms" class="programs-list"></div>
+      </div>
+      <div class="recent-workouts">
+        <h3>Recent Workouts</h3>
+        <div id="athleteWorkouts" class="workouts-list"></div>
+      </div>
+    </div>
+    <div class="panel-footer">
+      <button id="removeAthleteBtn" class="btn-danger">Remove Athlete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Athlete Modal -->
+<div id="addAthleteModal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content glass-card">
+    <h3>Add Athlete</h3>
+    <p>Enter the email address of the athlete you want to coach</p>
+    <div class="form-group">
+      <input type="email" id="athleteEmail" class="form-input" placeholder="athlete@email.com">
+    </div>
+    <div id="addAthleteError" class="error-message"></div>
+    <div class="modal-actions">
+      <button id="cancelAddBtn" class="btn-secondary">Cancel</button>
+      <button id="confirmAddBtn" class="btn-primary">Add Athlete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create Program Modal -->
+<div id="createProgramModal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content glass-card">
+    <h3>Create Program</h3>
+    <div class="form-group">
+      <label>Program Name</label>
+      <input type="text" id="programName" class="form-input" placeholder="e.g., 8-Week Strength Block">
+    </div>
+    <div class="form-group">
+      <label>Description (optional)</label>
+      <textarea id="programDescription" class="form-input" rows="3" placeholder="Program description..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button id="cancelProgramBtn" class="btn-secondary">Cancel</button>
+      <button id="confirmProgramBtn" class="btn-primary">Create Program</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='coach_dashboard.js') }}"></script>
+{% endblock %}

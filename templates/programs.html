@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}Programs - Chronicle{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='programs.css') }}">
+{% endblock %}
+
+{% block nav_links %}
+{% if current_user.is_coach %}
+<a href="{{ url_for('coach_dashboard') }}" class="nav-link">Dashboard</a>
+<a href="{{ url_for('programs_page') }}" class="nav-link primary">Programs</a>
+{% else %}
+<a href="{{ url_for('tracker') }}" class="nav-link">Tracker</a>
+<a href="{{ url_for('dashboard') }}" class="nav-link">Dashboard</a>
+<a href="{{ url_for('programs_page') }}" class="nav-link primary">Programs</a>
+{% endif %}
+<a href="{{ url_for('logout') }}" class="nav-link">Sign Out</a>
+{% endblock %}
+
+{% block main_class %}programs-main{% endblock %}
+
+{% block content %}
+<div class="programs-container">
+  <!-- Header -->
+  <section class="programs-header">
+    <div class="header-info">
+      <h1>Training Programs</h1>
+      <p id="headerSubtext">View and track your assigned programs</p>
+    </div>
+    <button id="createProgramBtn" class="btn-primary">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      New Program
+    </button>
+  </section>
+
+  <!-- Programs List View -->
+  <section id="programsList" class="programs-list-section">
+    <div id="programsGrid" class="programs-grid">
+      <div class="loading-placeholder">Loading programs...</div>
+    </div>
+    <div id="noPrograms" class="empty-state hidden">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+        <polyline points="10 9 9 9 8 9"/>
+      </svg>
+      <p>No programs yet</p>
+      <p class="subtext">Create a program to start tracking your training</p>
+    </div>
+  </section>
+
+  <!-- Program Detail View -->
+  <section id="programDetail" class="program-detail-section hidden">
+    <div class="detail-header">
+      <button id="backToListBtn" class="btn-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </button>
+      <div class="detail-title">
+        <h2 id="programTitle" contenteditable="true">Program Name</h2>
+        <p id="programDescription" class="program-desc"></p>
+      </div>
+      <div class="detail-actions">
+        <button id="addDayBtn" class="btn-secondary">Add Day</button>
+        <button id="deleteProgramBtn" class="btn-icon delete">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div id="programDays" class="program-days"></div>
+  </section>
+</div>
+
+<!-- Create Program Modal -->
+<div id="createProgramModal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content glass-card">
+    <h3>Create Program</h3>
+    <div class="form-group">
+      <label>Program Name</label>
+      <input type="text" id="newProgramName" class="form-input" placeholder="e.g., 8-Week Strength Block">
+    </div>
+    <div class="form-group">
+      <label>Description (optional)</label>
+      <textarea id="newProgramDescription" class="form-input" rows="3" placeholder="Program description..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button id="cancelCreateBtn" class="btn-secondary">Cancel</button>
+      <button id="confirmCreateBtn" class="btn-primary">Create Program</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Day Modal -->
+<div id="addDayModal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content glass-card">
+    <h3>Add Training Day</h3>
+    <div class="form-group">
+      <label>Day Name</label>
+      <input type="text" id="newDayName" class="form-input" placeholder="e.g., Lower Body, Push Day">
+    </div>
+    <div class="modal-actions">
+      <button id="cancelDayBtn" class="btn-secondary">Cancel</button>
+      <button id="confirmDayBtn" class="btn-primary">Add Day</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Exercise Modal -->
+<div id="addExerciseModal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content glass-card">
+    <h3>Add Exercise</h3>
+    <div class="form-group">
+      <label>Exercise Name</label>
+      <input type="text" id="exerciseName" class="form-input" placeholder="e.g., Squat, Bench Press">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Sets</label>
+        <input type="number" id="exerciseSets" class="form-input" value="3" min="1">
+      </div>
+      <div class="form-group">
+        <label>Reps</label>
+        <input type="text" id="exerciseReps" class="form-input" value="8-10" placeholder="e.g., 8-10, 5">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Prescribed Weight/Intensity (optional)</label>
+      <input type="text" id="exerciseWeight" class="form-input" placeholder="e.g., 135 lbs, RPE 8, 70%">
+    </div>
+    <div class="form-group" id="videoUrlGroup">
+      <label>Video Tutorial URL (optional)</label>
+      <input type="url" id="exerciseVideo" class="form-input" placeholder="https://youtube.com/...">
+    </div>
+    <div class="form-group">
+      <label>Exercise Type</label>
+      <select id="exerciseType" class="form-input">
+        <option value="standard">Standard</option>
+        <option value="squat_velocity">Squat (Velocity Tracked)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Notes (optional)</label>
+      <textarea id="exerciseNotes" class="form-input" rows="2" placeholder="Additional instructions..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button id="cancelExerciseBtn" class="btn-secondary">Cancel</button>
+      <button id="confirmExerciseBtn" class="btn-primary">Add Exercise</button>
+    </div>
+  </div>
+</div>
+
+<!-- Log Set Modal -->
+<div id="logSetModal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content glass-card">
+    <h3 id="logSetTitle">Log Set</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Reps Completed</label>
+        <input type="number" id="logReps" class="form-input" min="0">
+      </div>
+      <div class="form-group">
+        <label>Weight</label>
+        <div class="input-with-unit">
+          <input type="number" id="logWeight" class="form-input" min="0" step="0.5">
+          <select id="logWeightUnit" class="form-input unit-select">
+            <option value="lbs">lbs</option>
+            <option value="kg">kg</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>RPE (optional)</label>
+      <input type="number" id="logRpe" class="form-input" min="1" max="10" step="0.5" placeholder="1-10">
+    </div>
+    <div class="form-group">
+      <label>Notes (optional)</label>
+      <input type="text" id="logNotes" class="form-input" placeholder="How did it feel?">
+    </div>
+    <div class="modal-actions">
+      <button id="cancelLogBtn" class="btn-secondary">Cancel</button>
+      <button id="confirmLogBtn" class="btn-primary">Log Set</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const IS_COACH = {{ 'true' if current_user.is_coach else 'false' }};
+</script>
+<script src="{{ url_for('static', filename='programs.js') }}"></script>
+{% endblock %}
