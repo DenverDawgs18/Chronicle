@@ -1,0 +1,52 @@
+{# ========================================
+   Reusable Jinja Macros
+   ======================================== #}
+
+{# Form input macro #}
+{% macro form_input(name, label, type="text", placeholder="", autocomplete="", required=true, extra_class="") %}
+<div class="form-group">
+  <label for="{{ name }}">{{ label }}</label>
+  <input
+    type="{{ type }}"
+    id="{{ name }}"
+    name="{{ name }}"
+    class="form-input {{ extra_class }}"
+    placeholder="{{ placeholder }}"
+    {% if required %}required{% endif %}
+    {% if autocomplete %}autocomplete="{{ autocomplete }}"{% endif %}
+  >
+</div>
+{% endmacro %}
+
+{# Submit button macro #}
+{% macro submit_button(text, id="submitBtn") %}
+<button type="submit" class="btn-primary" id="{{ id }}">{{ text }}</button>
+{% endmacro %}
+
+{# Error message container #}
+{% macro error_container(id="errorMessage") %}
+<div id="{{ id }}" class="error-message"></div>
+{% endmacro %}
+
+{# Success message container #}
+{% macro success_container(id="successMessage") %}
+<div id="{{ id }}" class="success-message"></div>
+{% endmacro %}
+
+{# Feature card macro #}
+{% macro feature_card(icon, title, description) %}
+<div class="feature-card">
+  <div class="feature-icon">{{ icon }}</div>
+  <h3>{{ title }}</h3>
+  <p>{{ description }}</p>
+</div>
+{% endmacro %}
+
+{# Feature item (for subscribe page) #}
+{% macro feature_item(icon, title, description) %}
+<div class="feature-item">
+  <div class="icon">{{ icon }}</div>
+  <h4>{{ title }}</h4>
+  <p>{{ description }}</p>
+</div>
+{% endmacro %}

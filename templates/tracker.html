@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="../static/universal.css">
-  <link rel="stylesheet" href="../static/tracker.css">
-  <title>Enhanced Side Squat Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='universal.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='tracker.css') }}">
+  <title>Chronicle - Squat Tracker</title>
 </head>
 <body>
 <!--
@@ -64,6 +64,6 @@
     // Initialize display
     updateHeightDisplay(parseInt(heightSlider.value));
   </script>
-  <script src="../static/squat.js"></script>
+  <script src="{{ url_for('static', filename='squat.js') }}"></script>
 </body>
 </html>
