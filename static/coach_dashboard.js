@@ -2,6 +2,7 @@
 
 // State
 let athletes = [];
+let invites = [];
 let selectedAthlete = null;
 let selectedAthleteId = null;
 
@@ -14,12 +15,22 @@ const athleteStats = document.getElementById('athleteStats');
 const athletePrograms = document.getElementById('athletePrograms');
 const athleteWorkouts = document.getElementById('athleteWorkouts');
 
-const addAthleteBtn = document.getElementById('addAthleteBtn');
-const addAthleteModal = document.getElementById('addAthleteModal');
+// Invite elements
+const inviteAthleteBtn = document.getElementById('inviteAthleteBtn');
+const inviteAthleteModal = document.getElementById('inviteAthleteModal');
 const athleteEmail = document.getElementById('athleteEmail');
-const addAthleteError = document.getElementById('addAthleteError');
-const cancelAddBtn = document.getElementById('cancelAddBtn');
-const confirmAddBtn = document.getElementById('confirmAddBtn');
+const inviteError = document.getElementById('inviteError');
+const cancelInviteBtn = document.getElementById('cancelInviteBtn');
+const confirmInviteBtn = document.getElementById('confirmInviteBtn');
+
+const inviteLinkModal = document.getElementById('inviteLinkModal');
+const inviteLinkInput = document.getElementById('inviteLinkInput');
+const copyLinkBtn = document.getElementById('copyLinkBtn');
+const inviteEmailDisplay = document.getElementById('inviteEmailDisplay');
+const closeInviteLinkBtn = document.getElementById('closeInviteLinkBtn');
+
+const invitesSection = document.getElementById('invitesSection');
+const invitesGrid = document.getElementById('invitesGrid');
 
 const createProgramModal = document.getElementById('createProgramModal');
 const programName = document.getElementById('programName');
@@ -34,15 +45,21 @@ const removeAthleteBtn = document.getElementById('removeAthleteBtn');
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   loadAthletes();
+  loadInvites();
   setupEventListeners();
 });
 
 function setupEventListeners() {
-  // Add athlete modal
-  addAthleteBtn.addEventListener('click', () => showModal(addAthleteModal));
-  cancelAddBtn.addEventListener('click', () => hideModal(addAthleteModal));
-  confirmAddBtn.addEventListener('click', addAthlete);
-  addAthleteModal.querySelector('.modal-backdrop').addEventListener('click', () => hideModal(addAthleteModal));
+  // Invite athlete modal
+  inviteAthleteBtn.addEventListener('click', () => showModal(inviteAthleteModal));
+  cancelInviteBtn.addEventListener('click', () => hideModal(inviteAthleteModal));
+  confirmInviteBtn.addEventListener('click', createInvite);
+  inviteAthleteModal.querySelector('.modal-backdrop').addEventListener('click', () => hideModal(inviteAthleteModal));
+
+  // Invite link modal
+  copyLinkBtn.addEventListener('click', copyInviteLink);
+  closeInviteLinkBtn.addEventListener('click', () => hideModal(inviteLinkModal));
+  inviteLinkModal.querySelector('.modal-backdrop').addEventListener('click', () => hideModal(inviteLinkModal));
 
   // Create program modal
   cancelProgramBtn.addEventListener('click', () => hideModal(createProgramModal));
@@ -56,7 +73,7 @@ function setupEventListeners() {
 
   // Enter key in email input
   athleteEmail.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') addAthlete();
+    if (e.key === 'Enter') createInvite();
   });
 }
 
@@ -72,7 +89,8 @@ async function api(endpoint, options = {}) {
   return response.json();
 }
 
-// Athletes
+// ========== Athletes ==========
+
 async function loadAthletes() {
   const data = await api('/api/coach/athletes');
   if (data.success) {
@@ -97,6 +115,7 @@ function renderAthletes() {
           <h3>${escapeHtml(athlete.name)}</h3>
           <span>${athlete.email}</span>
         </div>
+        <span class="status-badge status-joined">Joined</span>
       </div>
       <div class="athlete-card-stats">
         <div class="mini-stat">
@@ -170,28 +189,6 @@ function closeAthleteDetail() {
   selectedAthleteId = null;
 }
 
-async function addAthlete() {
-  const email = athleteEmail.value.trim().toLowerCase();
-  if (!email) {
-    showError(addAthleteError, 'Please enter an email address');
-    return;
-  }
-
-  const data = await api('/api/coach/add-athlete', {
-    method: 'POST',
-    body: JSON.stringify({ email })
-  });
-
-  if (data.success) {
-    hideModal(addAthleteModal);
-    athleteEmail.value = '';
-    addAthleteError.classList.remove('show');
-    loadAthletes();
-  } else {
-    showError(addAthleteError, data.error || 'Failed to add athlete');
-  }
-}
-
 async function removeAthlete() {
   if (!selectedAthleteId) return;
 
@@ -206,6 +203,155 @@ async function removeAthlete() {
     loadAthletes();
   }
 }
+
+// ========== Invitations ==========
+
+async function loadInvites() {
+  const data = await api('/api/coach/invites');
+  if (data.success) {
+    invites = data.invites.filter(i => i.status === 'pending');
+    renderInvites();
+  }
+}
+
+function renderInvites() {
+  if (invites.length === 0) {
+    invitesSection.classList.add('hidden');
+    return;
+  }
+
+  invitesSection.classList.remove('hidden');
+  invitesGrid.innerHTML = invites.map(invite => `
+    <div class="invite-card">
+      <div class="invite-card-header">
+        <div class="invite-avatar">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <polyline points="22,6 12,13 2,6"/>
+          </svg>
+        </div>
+        <div class="invite-info">
+          <h3>${escapeHtml(invite.email)}</h3>
+          <span>Invited ${formatDate(invite.created_at)}</span>
+        </div>
+        <span class="status-badge status-pending">Pending</span>
+      </div>
+      <div class="invite-card-actions">
+        <button class="btn-sm btn-secondary" onclick="copyInviteLinkById(${invite.id})">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          Copy Link
+        </button>
+        <button class="btn-sm btn-danger-outline" onclick="deleteInvite(${invite.id})">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+          </svg>
+          Cancel
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function createInvite() {
+  const email = athleteEmail.value.trim().toLowerCase();
+  if (!email) {
+    showError(inviteError, 'Please enter an email address');
+    return;
+  }
+
+  confirmInviteBtn.disabled = true;
+  confirmInviteBtn.textContent = 'Sending...';
+
+  const data = await api('/api/coach/invite', {
+    method: 'POST',
+    body: JSON.stringify({ email })
+  });
+
+  confirmInviteBtn.disabled = false;
+  confirmInviteBtn.textContent = 'Send Invite';
+
+  if (data.success) {
+    hideModal(inviteAthleteModal);
+    athleteEmail.value = '';
+    inviteError.classList.remove('show');
+
+    // Show the invite link modal
+    inviteLinkInput.value = data.invite_url;
+    inviteEmailDisplay.textContent = email;
+    showModal(inviteLinkModal);
+
+    loadInvites();
+  } else {
+    showError(inviteError, data.error || 'Failed to create invite');
+  }
+}
+
+function copyInviteLink() {
+  inviteLinkInput.select();
+  navigator.clipboard.writeText(inviteLinkInput.value).then(() => {
+    copyLinkBtn.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+      Copied!
+    `;
+    setTimeout(() => {
+      copyLinkBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+        Copy
+      `;
+    }, 2000);
+  });
+}
+
+async function copyInviteLinkById(inviteId) {
+  const invite = invites.find(i => i.id === inviteId);
+  if (!invite) return;
+
+  // We need to reconstruct the URL since we don't store it
+  // Make a quick API call to get fresh invite data with URL
+  const data = await api('/api/coach/invite', {
+    method: 'POST',
+    body: JSON.stringify({ email: invite.email })
+  });
+
+  if (data.success && data.invite_url) {
+    navigator.clipboard.writeText(data.invite_url).then(() => {
+      // Show feedback
+      const btn = event.target.closest('button');
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        Copied!
+      `;
+      setTimeout(() => {
+        btn.innerHTML = originalHTML;
+      }, 2000);
+    });
+  }
+}
+
+async function deleteInvite(inviteId) {
+  if (!confirm('Cancel this invite?')) return;
+
+  const data = await api(`/api/coach/invites/${inviteId}`, {
+    method: 'DELETE'
+  });
+
+  if (data.success) {
+    loadInvites();
+  }
+}
+
+// ========== Programs ==========
 
 async function createProgram() {
   if (!selectedAthleteId) return;
@@ -236,7 +382,8 @@ async function createProgram() {
   }
 }
 
-// Utilities
+// ========== Utilities ==========
+
 function showModal(modal) {
   modal.classList.remove('hidden');
 }
@@ -268,3 +415,5 @@ function formatDate(isoString) {
 
 // Expose to global scope
 window.selectAthlete = selectAthlete;
+window.copyInviteLinkById = copyInviteLinkById;
+window.deleteInvite = deleteInvite;

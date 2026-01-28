@@ -22,15 +22,21 @@
       <h1>Coach Dashboard</h1>
       <p>Manage your athletes and create training programs</p>
     </div>
-    <button id="addAthleteBtn" class="btn-primary">
+    <button id="inviteAthleteBtn" class="btn-primary">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
         <circle cx="8.5" cy="7" r="4"/>
         <line x1="20" y1="8" x2="20" y2="14"/>
         <line x1="23" y1="11" x2="17" y2="11"/>
       </svg>
-      Add Athlete
+      Invite Athlete
     </button>
+  </section>
+
+  <!-- Pending Invites Section -->
+  <section id="invitesSection" class="invites-section hidden">
+    <h2>Pending Invites</h2>
+    <div id="invitesGrid" class="invites-grid"></div>
   </section>
 
   <!-- Athletes Grid -->
@@ -47,7 +53,7 @@
         <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
       </svg>
       <p>No athletes yet</p>
-      <p class="subtext">Add athletes by their email address to start coaching</p>
+      <p class="subtext">Invite athletes by email to start coaching them</p>
     </div>
   </section>
 
@@ -81,19 +87,42 @@
   </div>
 </div>
 
-<!-- Add Athlete Modal -->
-<div id="addAthleteModal" class="modal hidden">
+<!-- Invite Athlete Modal -->
+<div id="inviteAthleteModal" class="modal hidden">
   <div class="modal-backdrop"></div>
   <div class="modal-content glass-card">
-    <h3>Add Athlete</h3>
-    <p>Enter the email address of the athlete you want to coach</p>
+    <h3>Invite Athlete</h3>
+    <p>Enter the email address of the athlete you want to invite</p>
     <div class="form-group">
       <input type="email" id="athleteEmail" class="form-input" placeholder="athlete@email.com">
     </div>
-    <div id="addAthleteError" class="error-message"></div>
+    <div id="inviteError" class="error-message"></div>
     <div class="modal-actions">
-      <button id="cancelAddBtn" class="btn-secondary">Cancel</button>
-      <button id="confirmAddBtn" class="btn-primary">Add Athlete</button>
+      <button id="cancelInviteBtn" class="btn-secondary">Cancel</button>
+      <button id="confirmInviteBtn" class="btn-primary">Send Invite</button>
+    </div>
+  </div>
+</div>
+
+<!-- Invite Link Modal -->
+<div id="inviteLinkModal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content glass-card">
+    <h3>Invite Created!</h3>
+    <p>Share this link with your athlete to join your team:</p>
+    <div class="invite-link-container">
+      <input type="text" id="inviteLinkInput" class="form-input" readonly>
+      <button id="copyLinkBtn" class="btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+        Copy
+      </button>
+    </div>
+    <p class="invite-email-hint">Invite sent to: <strong id="inviteEmailDisplay"></strong></p>
+    <div class="modal-actions">
+      <button id="closeInviteLinkBtn" class="btn-primary">Done</button>
     </div>
   </div>
 </div>

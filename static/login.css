@@ -45,3 +45,37 @@
 .password-hint.show {
   display: block;
 }
+
+/* Info box for join page */
+.info-box {
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.5;
+}
+
+/* Error text for invalid invites */
+.error-text {
+  color: #f87171;
+}
+
+/* Alternative action link */
+.alt-action {
+  margin-top: 1.5rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.alt-action a {
+  color: #60a5fa;
+  text-decoration: none;
+}
+
+.alt-action a:hover {
+  text-decoration: underline;
+}
