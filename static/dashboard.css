@@ -2,6 +2,7 @@
 
 .dashboard-main {
   padding: 2rem;
+  padding-top: 100px;
   max-width: 1200px;
   margin: 0 auto;
 }
@@ -665,6 +666,7 @@
 @media (max-width: 768px) {
   .dashboard-main {
     padding: 1rem;
+    padding-top: 80px;
   }
 
   .lift-stats-grid {
