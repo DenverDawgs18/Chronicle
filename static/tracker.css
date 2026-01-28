@@ -53,6 +53,19 @@ body {
   border: 1px solid rgba(167, 139, 250, 0.3);
 }
 
+.program-indicator {
+  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.program-indicator.hidden {
+  display: none;
+}
+
 /* Control Buttons */
 .control-buttons {
   display: flex;

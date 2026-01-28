@@ -54,11 +54,17 @@ Chronicle/
 │   ├── dashboard.html          # Workout history and analytics dashboard
 │   ├── subscribe.html          # Pricing/subscription page
 │   ├── code.html               # Access code redemption
-│   └── setup_password.html     # Post-payment password setup
+│   ├── setup_password.html     # Post-payment password setup
+│   ├── coach_dashboard.html    # Coach dashboard for athlete management
+│   └── programs.html           # Training programs page
 ├── static/                     # Frontend assets
 │   ├── squat.js                # Core tracking logic + workout integration
 │   ├── dashboard.js            # Dashboard logic, API calls, real-time sync
 │   ├── login.js                # Auth form handling
+│   ├── coach_dashboard.js      # Coach dashboard logic
+│   ├── coach_dashboard.css     # Coach dashboard styles
+│   ├── programs.js             # Programs page logic
+│   ├── programs.css            # Programs page styles
 │   ├── universal.css           # Shared styles
 │   ├── index.css               # Landing page styles
 │   ├── login.css               # Auth page styles
@@ -78,16 +84,20 @@ Chronicle/
 
 | File | Purpose |
 |------|---------|
-| `app.py` | All Flask routes, database models (User, Workout, Set, Rep), Stripe webhooks |
+| `app.py` | All Flask routes, database models, Stripe webhooks |
 | `static/squat.js` | MediaPipe pose detection, squat state machine, velocity calculations, workout integration |
-| `static/dashboard.js` | Dashboard logic, workout/set APIs, real-time BroadcastChannel sync |
+| `static/dashboard.js` | Dashboard logic, workout/set APIs, real-time BroadcastChannel sync, customizable metrics |
+| `static/coach_dashboard.js` | Coach athlete management, program creation |
+| `static/programs.js` | Training programs CRUD, exercise logging, velocity tracking integration |
 | `templates/tracker.html` | Main UI with video canvas, controls, and save set functionality |
-| `templates/dashboard.html` | Workout history, stats overview, current workout management |
+| `templates/dashboard.html` | Workout history, stats overview, customizable lift metrics |
+| `templates/coach_dashboard.html` | Coach dashboard for managing athletes |
+| `templates/programs.html` | Training programs view and editor |
 | `fly.toml` | Deployment configuration for Fly.io |
 
 ## Database Models
 
-The application uses four SQLAlchemy models:
+The application uses multiple SQLAlchemy models for workouts, programs, and coach functionality:
 
 ### User Model
 ```python
@@ -95,15 +105,20 @@ User:
   - id: Integer (primary key)
   - email: String (unique, indexed)
   - password_hash: String
+  - name: String (optional display name)
   - subscribed: Boolean
   - stripe_customer_id: String
   - subscription_type: String ('monthly', 'annual', 'lifetime')
   - subscription_end_date: DateTime
   - height: Integer (inches, default 58)
   - needs_password_setup: Boolean
+  - is_coach: Boolean (coach access flag)
+  - coach_id: Integer (FK to User, for athlete-coach relationship)
+  - dashboard_metrics: Text (JSON list of selected metrics)
   - created_at: DateTime
   - last_login: DateTime
   - workouts: Relationship (one-to-many with Workout)
+  - athletes: Relationship (one-to-many self-referential for coaches)
 ```
 
 ### Workout Model
@@ -150,6 +165,66 @@ Rep:
   - Methods: to_dict() returns individual rep data
 ```
 
+### Program Model
+```python
+Program:
+  - id: Integer (primary key)
+  - coach_id: Integer (FK to User, null if self-created)
+  - athlete_id: Integer (FK to User)
+  - name: String
+  - description: Text
+  - created_at: DateTime
+  - start_date: DateTime
+  - end_date: DateTime
+  - is_active: Boolean
+  - days: Relationship (one-to-many with ProgramDay)
+```
+
+### ProgramDay Model
+```python
+ProgramDay:
+  - id: Integer (primary key)
+  - program_id: Integer (FK to Program)
+  - day_number: Integer
+  - name: String (e.g., "Lower Body")
+  - notes: Text
+  - exercises: Relationship (one-to-many with ProgramExercise)
+```
+
+### ProgramExercise Model
+```python
+ProgramExercise:
+  - id: Integer (primary key)
+  - program_day_id: Integer (FK to ProgramDay)
+  - name: String
+  - video_url: String (only coaches can set)
+  - sets_prescribed: Integer
+  - reps_prescribed: String (e.g., "8-10")
+  - weight_prescribed: String
+  - notes: Text
+  - order: Integer
+  - exercise_type: String ('standard', 'squat_velocity')
+  - set_logs: Relationship (one-to-many with ProgramSetLog)
+```
+
+### ProgramSetLog Model
+```python
+ProgramSetLog:
+  - id: Integer (primary key)
+  - program_exercise_id: Integer (FK to ProgramExercise)
+  - user_id: Integer (FK to User)
+  - set_number: Integer
+  - reps_completed: Integer
+  - weight: Float
+  - weight_unit: String ('lbs', 'kg')
+  - rpe: Float (Rate of Perceived Exertion)
+  - notes: Text
+  - velocity_tracked: Boolean
+  - workout_set_id: Integer (FK to Set, links to velocity data)
+  - created_at: DateTime
+  - completed_at: DateTime
+```
+
 ## API Routes
 
 ### Public Routes
@@ -185,6 +260,42 @@ Rep:
 | `/api/workouts/<id>/sets/<set_id>` | DELETE | Delete specific set |
 | `/api/workouts/current` | GET | Get active incomplete workout or null |
 | `/api/stats` | GET | Get user statistics (totals, velocity trend) |
+| `/api/sets/<id>/reps` | POST | Add a rep to an existing set (non-velocity) |
+| `/api/sets/<id>/reps/<rep_id>` | DELETE | Delete a rep from a set |
+
+### Coach API Routes (JSON, requires coach access)
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/coach` | GET | Coach dashboard page |
+| `/api/coach/athletes` | GET | List all athletes for this coach |
+| `/api/coach/athletes/<id>` | GET | Get detailed athlete info |
+| `/api/coach/add-athlete` | POST | Add athlete by email |
+| `/api/coach/remove-athlete/<id>` | DELETE | Remove athlete from coach |
+
+### Program API Routes (JSON)
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/programs` | GET | Programs page |
+| `/api/programs` | GET | List programs (coach: created, athlete: assigned) |
+| `/api/programs` | POST | Create new program |
+| `/api/programs/<id>` | GET | Get program with all days/exercises |
+| `/api/programs/<id>` | PUT | Update program details |
+| `/api/programs/<id>` | DELETE | Delete program |
+| `/api/programs/<id>/days` | POST | Add day to program |
+| `/api/programs/<id>/days/<day_id>` | PUT/DELETE | Update/delete day |
+| `/api/program-days/<id>/exercises` | POST | Add exercise to day |
+| `/api/exercises/<id>` | PUT/DELETE | Update/delete exercise |
+| `/api/exercises/<id>/log` | POST | Log a completed set |
+| `/api/exercises/<id>/log/<log_id>` | PUT/DELETE | Update/delete set log |
+| `/api/exercises/<id>/logs` | GET | Get all logs for exercise |
+
+### Dashboard Customization API Routes (JSON)
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/dashboard/metrics` | GET | Get user's selected metrics and available options |
+| `/api/dashboard/metrics` | PUT | Update selected metrics (3-6) |
+| `/api/dashboard/lift-stats` | GET | Get comprehensive lift statistics |
+| `/api/user/profile` | PUT | Update user profile (name, height) |
 
 ## Environment Variables
 

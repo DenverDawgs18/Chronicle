@@ -1044,9 +1044,40 @@ async function initialize() {
 let currentWorkoutId = null;
 let currentSetReps = [];  // Store individual rep data for current set
 
+// Program tracking
+let programExerciseId = null;
+let programProgramId = null;
+
 const saveSetBtn = document.getElementById('saveSetBtn');
 const setCounterEl = document.getElementById('setCounter');
+const programIndicator = document.getElementById('programExerciseIndicator');
 const workoutChannel = new BroadcastChannel('chronicle-workout');
+
+// Check for program exercise tracking
+function checkProgramTracking() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const exerciseId = urlParams.get('program_exercise');
+
+  if (exerciseId) {
+    programExerciseId = parseInt(exerciseId);
+    // Also check session storage for program ID
+    const storedProgramId = sessionStorage.getItem('trackingProgramId');
+    if (storedProgramId) {
+      programProgramId = parseInt(storedProgramId);
+    }
+
+    // Show program indicator
+    if (programIndicator) {
+      programIndicator.textContent = 'Program Tracking';
+      programIndicator.classList.remove('hidden');
+    }
+
+    // Update save button
+    if (saveSetBtn) {
+      saveSetBtn.textContent = 'Save to Program';
+    }
+  }
+}
 
 // Get or create current workout on page load
 async function initWorkout() {
@@ -1129,9 +1160,26 @@ async function saveSet() {
       // Notify dashboard via BroadcastChannel
       workoutChannel.postMessage({ type: 'SET_ADDED', set: data.set });
 
-      // Show success feedback
-      const prevText = feedbackEl.textContent;
-      feedbackEl.textContent = `✅ Set saved! ${currentSetReps.length} reps recorded`;
+      // If tracking for a program exercise, also log to program
+      if (programExerciseId) {
+        try {
+          await fetch(`/api/exercises/${programExerciseId}/log`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              reps_completed: currentSetReps.length,
+              velocity_tracked: true,
+              workout_set_id: data.set.id
+            })
+          });
+          feedbackEl.textContent = `✅ Set saved to program! ${currentSetReps.length} reps recorded`;
+        } catch (progErr) {
+          console.error('Failed to log to program:', progErr);
+          feedbackEl.textContent = `✅ Set saved! ${currentSetReps.length} reps (program log failed)`;
+        }
+      } else {
+        feedbackEl.textContent = `✅ Set saved! ${currentSetReps.length} reps recorded`;
+      }
 
       // Reset for next set
       const setNum = data.set.set_number;
@@ -1143,7 +1191,7 @@ async function saveSet() {
 
       if (saveSetBtn) {
         saveSetBtn.classList.remove('has-reps');
-        saveSetBtn.textContent = 'Save Set';
+        saveSetBtn.textContent = programExerciseId ? 'Save to Program' : 'Save Set';
       }
 
       updateSetCounter(setNum);
@@ -1167,3 +1215,4 @@ if (saveSetBtn) {
 // Initialize
 initialize();
 initWorkout();
+checkProgramTracking();
