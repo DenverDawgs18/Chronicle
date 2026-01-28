@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% from "macros.html" import error_container, success_container, submit_button %}
+
+{% block title %}Join Chronicle{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}">
+{% endblock %}
+
+{% block main_class %}page-centered{% endblock %}
+
+{% block content %}
+<div class="login-container">
+  <div class="glass-card">
+    {% if error %}
+    <h1>Invitation Error</h1>
+    <p class="subtitle error-text">{{ error }}</p>
+    <div class="alt-action">
+      <a href="{{ url_for('login') }}">Go to Login</a>
+    </div>
+    {% else %}
+    <h1>Join Chronicle</h1>
+    <p class="subtitle">You've been invited by <strong>{{ coach.get_display_name() }}</strong></p>
+
+    <div class="info-box">
+      Create your account to start tracking your training progress and receive programs from your coach.
+    </div>
+
+    {{ error_container() }}
+    {{ success_container() }}
+
+    <form id="joinForm">
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" class="form-input" value="{{ invite.email }}" placeholder="your@email.com" required>
+      </div>
+
+      <div class="form-group">
+        <label for="password">Create Password</label>
+        <input type="password" id="password" name="password" class="form-input" placeholder="Minimum 8 characters" required minlength="8">
+      </div>
+
+      <div class="form-group">
+        <label for="confirmPassword">Confirm Password</label>
+        <input type="password" id="confirmPassword" name="confirmPassword" class="form-input" placeholder="Confirm your password" required>
+      </div>
+
+      {{ submit_button("Create Account") }}
+    </form>
+
+    <div class="alt-action">
+      Already have an account? <a href="{{ url_for('login') }}">Sign in</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if not error %}
+<script>
+  const form = document.getElementById('joinForm');
+  const errorMessage = document.getElementById('errorMessage');
+  const successMessage = document.getElementById('successMessage');
+  const submitBtn = document.getElementById('submitBtn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+
+    if (password !== confirmPassword) {
+      errorMessage.textContent = 'Passwords do not match';
+      errorMessage.classList.add('show');
+      return;
+    }
+
+    errorMessage.classList.remove('show');
+    successMessage.classList.remove('show');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating account...';
+
+    try {
+      const response = await fetch(window.location.pathname, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        successMessage.textContent = 'Account created! Redirecting...';
+        successMessage.classList.add('show');
+        setTimeout(() => {
+          window.location.href = data.redirect || '/dashboard';
+        }, 1500);
+      } else {
+        errorMessage.textContent = data.error || 'An error occurred';
+        errorMessage.classList.add('show');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Account';
+      }
+    } catch (error) {
+      errorMessage.textContent = 'An error occurred. Please try again.';
+      errorMessage.classList.add('show');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create Account';
+    }
+  });
+</script>
+{% endif %}
+{% endblock %}

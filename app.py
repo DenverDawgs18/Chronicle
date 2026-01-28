@@ -39,6 +39,7 @@ WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
 STRIPE_MONTHLY_LINK = os.getenv('STRIPE_MONTHLY_LINK', 'https://buy.stripe.com/your-monthly-link')
 STRIPE_ANNUAL_LINK = os.getenv('STRIPE_ANNUAL_LINK', 'https://buy.stripe.com/your-annual-link')
 ACCESS_CODE = os.getenv('ACCESS_CODE')
+COACH_CODE = os.getenv('COACH_CODE')
 # Database Models
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -298,6 +299,32 @@ class ProgramSetLog(db.Model):
         return result
 
 
+class CoachInvite(db.Model):
+    """Invitation from a coach to an athlete"""
+    id = db.Column(db.Integer, primary_key=True)
+    coach_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    email = db.Column(db.String(120), nullable=False)  # Email to invite
+    token = db.Column(db.String(64), unique=True, nullable=False)  # Unique invite token
+    status = db.Column(db.String(20), default='pending')  # pending, accepted, expired
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    accepted_at = db.Column(db.DateTime, nullable=True)
+    athlete_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # Set when accepted
+
+    # Relationships
+    coach = db.relationship('User', foreign_keys=[coach_id], backref='invites_sent')
+    athlete = db.relationship('User', foreign_keys=[athlete_id], backref='invite_accepted')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'email': self.email,
+            'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'accepted_at': self.accepted_at.isoformat() if self.accepted_at else None,
+            'athlete_id': self.athlete_id
+        }
+
+
 # Create tables
 with app.app_context():
     db.create_all()
@@ -435,29 +462,40 @@ def set_height():
 @app.route('/code', methods=['GET', 'POST'])
 @login_required
 def access_code():
-    # If user is already subscribed, redirect to tracker
-    if current_user.subscribed:
+    # If user is already subscribed and not a coach trying coach code, redirect
+    if current_user.subscribed and current_user.is_coach:
+        return redirect(url_for('coach_dashboard'))
+    if current_user.subscribed and not current_user.is_coach:
         return redirect(url_for('tracker'))
-    
+
     if request.method == 'POST':
         data = request.get_json()
-        code = data.get('code', '').strip()
-        
+        code = data.get('code', '').strip().upper()
+
         if not code:
             return jsonify({'error': 'Code required'}), 400
-        
-        # Check if code matches
-        if code.upper() == ACCESS_CODE:
-            # Grant lifetime access
+
+        # Check if code matches ACCESS_CODE (lifetime athlete access)
+        if ACCESS_CODE and code == ACCESS_CODE.upper():
             current_user.subscribed = True
             current_user.subscription_type = 'lifetime'
             db.session.commit()
-            
+
             print(f"✅ Lifetime access granted to {current_user.email} via access code")
-            return jsonify({'success': True, 'message': 'Access granted!'})
-        else:
-            return jsonify({'error': 'Invalid access code'}), 401
-    
+            return jsonify({'success': True, 'message': 'Access granted!', 'redirect': url_for('tracker')})
+
+        # Check if code matches COACH_CODE (coach access)
+        if COACH_CODE and code == COACH_CODE.upper():
+            current_user.subscribed = True
+            current_user.subscription_type = 'lifetime'
+            current_user.is_coach = True
+            db.session.commit()
+
+            print(f"✅ Coach access granted to {current_user.email} via coach code")
+            return jsonify({'success': True, 'message': 'Coach access granted!', 'redirect': url_for('coach_dashboard')})
+
+        return jsonify({'error': 'Invalid access code'}), 401
+
     # GET request - render the code page
     return render_template('code.html')
 @app.route('/setup-password', methods=['GET', 'POST'])
@@ -954,6 +992,160 @@ def remove_athlete(athlete_id):
     db.session.commit()
 
     return jsonify({'success': True})
+
+
+# ========== Coach Invitation Routes ==========
+
+@app.route('/api/coach/invites', methods=['GET'])
+@login_required
+@coach_required
+def get_coach_invites():
+    """Get all invitations sent by this coach"""
+    invites = CoachInvite.query.filter_by(coach_id=current_user.id).order_by(CoachInvite.created_at.desc()).all()
+    return jsonify({'success': True, 'invites': [i.to_dict() for i in invites]})
+
+
+@app.route('/api/coach/invite', methods=['POST'])
+@login_required
+@coach_required
+def create_invite():
+    """Create a new invitation for an athlete"""
+    import secrets
+
+    data = request.get_json()
+    email = data.get('email', '').lower().strip()
+
+    if not email:
+        return jsonify({'error': 'Email required'}), 400
+
+    # Check if user already exists and is already linked to this coach
+    existing_user = User.query.filter_by(email=email).first()
+    if existing_user and existing_user.coach_id == current_user.id:
+        return jsonify({'error': 'This athlete is already linked to you'}), 400
+
+    # Check if there's already a pending invite for this email from this coach
+    existing_invite = CoachInvite.query.filter_by(
+        coach_id=current_user.id,
+        email=email,
+        status='pending'
+    ).first()
+
+    if existing_invite:
+        # Return the existing invite
+        return jsonify({
+            'success': True,
+            'invite': existing_invite.to_dict(),
+            'invite_url': url_for('join_via_invite', token=existing_invite.token, _external=True),
+            'message': 'Invite already exists'
+        })
+
+    # Create new invite
+    token = secrets.token_urlsafe(32)
+    invite = CoachInvite(
+        coach_id=current_user.id,
+        email=email,
+        token=token
+    )
+    db.session.add(invite)
+    db.session.commit()
+
+    invite_url = url_for('join_via_invite', token=token, _external=True)
+
+    print(f"✅ Invite created by {current_user.email} for {email}")
+    return jsonify({
+        'success': True,
+        'invite': invite.to_dict(),
+        'invite_url': invite_url
+    }), 201
+
+
+@app.route('/api/coach/invites/<int:invite_id>', methods=['DELETE'])
+@login_required
+@coach_required
+def delete_invite(invite_id):
+    """Delete/cancel an invitation"""
+    invite = CoachInvite.query.filter_by(id=invite_id, coach_id=current_user.id).first()
+    if not invite:
+        return jsonify({'error': 'Invite not found'}), 404
+
+    db.session.delete(invite)
+    db.session.commit()
+
+    return jsonify({'success': True})
+
+
+@app.route('/join/<token>')
+def join_via_invite(token):
+    """Public page for athlete to join via invite link"""
+    invite = CoachInvite.query.filter_by(token=token, status='pending').first()
+    if not invite:
+        return render_template('join.html', error='Invalid or expired invitation link')
+
+    coach = User.query.get(invite.coach_id)
+    return render_template('join.html', invite=invite, coach=coach)
+
+
+@app.route('/join/<token>', methods=['POST'])
+def process_join_invite(token):
+    """Process athlete registration via invite"""
+    invite = CoachInvite.query.filter_by(token=token, status='pending').first()
+    if not invite:
+        return jsonify({'error': 'Invalid or expired invitation link'}), 400
+
+    data = request.get_json()
+    email = data.get('email', '').lower().strip()
+    password = data.get('password', '')
+
+    if not email or not password:
+        return jsonify({'error': 'Email and password required'}), 400
+
+    if len(password) < 8:
+        return jsonify({'error': 'Password must be at least 8 characters'}), 400
+
+    # Check if user already exists
+    existing_user = User.query.filter_by(email=email).first()
+
+    if existing_user:
+        # Verify it's the same email as the invite, or allow different email
+        if existing_user.coach_id and existing_user.coach_id != invite.coach_id:
+            return jsonify({'error': 'This account already has a different coach'}), 400
+
+        # Link existing user to coach
+        existing_user.coach_id = invite.coach_id
+        existing_user.subscribed = True
+        existing_user.subscription_type = 'coach'
+        db.session.commit()
+
+        # Update invite
+        invite.status = 'accepted'
+        invite.accepted_at = datetime.utcnow()
+        invite.athlete_id = existing_user.id
+        db.session.commit()
+
+        login_user(existing_user, remember=True)
+        print(f"✅ Existing user {email} joined coach {invite.coach.email}")
+        return jsonify({'success': True, 'redirect': url_for('dashboard')})
+
+    # Create new user
+    user = User(
+        email=email,
+        subscribed=True,
+        subscription_type='coach',
+        coach_id=invite.coach_id
+    )
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+
+    # Update invite
+    invite.status = 'accepted'
+    invite.accepted_at = datetime.utcnow()
+    invite.athlete_id = user.id
+    db.session.commit()
+
+    login_user(user, remember=True)
+    print(f"✅ New user {email} created and joined coach {invite.coach.email}")
+    return jsonify({'success': True, 'redirect': url_for('dashboard')})
 
 
 # ========== Program Routes ==========

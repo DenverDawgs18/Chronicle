@@ -72,10 +72,10 @@
       const data = await response.json();
 
       if (response.ok) {
-        successMessage.textContent = 'Access granted! Redirecting...';
+        successMessage.textContent = data.message || 'Access granted! Redirecting...';
         successMessage.classList.add('show');
         setTimeout(() => {
-          window.location.href = '/tracker';
+          window.location.href = data.redirect || '/tracker';
         }, 1500);
       } else {
         errorMessage.textContent = data.error || 'Invalid code';
