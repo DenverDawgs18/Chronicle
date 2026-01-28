@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Chronicle{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+{% endblock %}
+
+{% block nav_links %}
+<a href="{{ url_for('tracker') }}" class="nav-link">Tracker</a>
+<a href="{{ url_for('dashboard') }}" class="nav-link primary">Dashboard</a>
+<a href="{{ url_for('logout') }}" class="nav-link">Sign Out</a>
+{% endblock %}
+
+{% block main_class %}dashboard-main{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+  <!-- Stats Overview -->
+  <section class="stats-section">
+    <div class="stats-grid">
+      <div class="stat-card glass-card">
+        <div class="stat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div class="stat-content">
+          <span class="stat-value" id="totalWorkouts">-</span>
+          <span class="stat-label">Workouts</span>
+        </div>
+      </div>
+      <div class="stat-card glass-card">
+        <div class="stat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <path d="M9 9h6M9 12h6M9 15h4"/>
+          </svg>
+        </div>
+        <div class="stat-content">
+          <span class="stat-value" id="totalSets">-</span>
+          <span class="stat-label">Total Sets</span>
+        </div>
+      </div>
+      <div class="stat-card glass-card">
+        <div class="stat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 6v6l4 2"/>
+          </svg>
+        </div>
+        <div class="stat-content">
+          <span class="stat-value" id="totalReps">-</span>
+          <span class="stat-label">Total Reps</span>
+        </div>
+      </div>
+      <div class="stat-card glass-card">
+        <div class="stat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+        </div>
+        <div class="stat-content">
+          <span class="stat-value" id="avgVelocity">-</span>
+          <span class="stat-label">Avg Speed</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Active Workout Section -->
+  <section class="active-workout-section">
+    <div class="section-header">
+      <h2>Current Workout</h2>
+      <div class="header-actions">
+        <button id="newWorkoutBtn" class="btn-secondary">New Workout</button>
+        <a href="{{ url_for('tracker') }}" class="btn-primary">Open Tracker</a>
+      </div>
+    </div>
+
+    <div id="activeWorkout" class="active-workout glass-card">
+      <div class="workout-empty" id="noActiveWorkout">
+        <p>No active workout</p>
+        <button id="startWorkoutBtn" class="btn-primary">Start New Workout</button>
+      </div>
+      <div class="workout-active hidden" id="currentWorkoutContent">
+        <div class="workout-header">
+          <div class="workout-info">
+            <h3 id="workoutName" class="workout-title editable" contenteditable="true">Squat Session</h3>
+            <span id="workoutDate" class="workout-date"></span>
+          </div>
+          <div class="workout-actions">
+            <button id="finishWorkoutBtn" class="btn-success">Finish Workout</button>
+          </div>
+        </div>
+        <div id="currentSets" class="sets-container"></div>
+        <div class="workout-summary" id="workoutSummary">
+          <span id="summaryReps">0 reps</span>
+          <span class="summary-divider">|</span>
+          <span id="summarySets">0 sets</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Workout History -->
+  <section class="history-section">
+    <div class="section-header">
+      <h2>Workout History</h2>
+    </div>
+    <div id="workoutHistory" class="workout-list">
+      <div class="loading-placeholder">Loading workouts...</div>
+    </div>
+    <div id="loadMoreContainer" class="load-more-container hidden">
+      <button id="loadMoreBtn" class="btn-secondary">Load More</button>
+    </div>
+  </section>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content glass-card">
+    <h3>Delete Workout?</h3>
+    <p>This will permanently delete this workout and all its sets.</p>
+    <div class="modal-actions">
+      <button id="cancelDeleteBtn" class="btn-secondary">Cancel</button>
+      <button id="confirmDeleteBtn" class="btn-danger">Delete</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+{% endblock %}

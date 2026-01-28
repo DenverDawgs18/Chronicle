@@ -701,14 +701,16 @@ function detectSquat(landmarks) {
         repTimes.push(ascentTime);
         repDepths.push(maxDepthInches);
         repCount++;
-        
+
         const speedScore = calculateSpeedScore(ascentTime, maxDepthInches);
-        
-        counterEl.textContent = `Reps: ${repCount}`;
-        
         const quality = getDepthQuality(maxDepthInches);
+
+        // Record rep for workout tracking
+        recordRep(ascentTime, maxDepthInches, speedScore, quality.label.toLowerCase());
+
+        counterEl.textContent = `Reps: ${repCount}`;
         feedbackEl.textContent = `✓ Rep ${repCount}: Speed ${speedScore} ${quality.emoji} ${quality.label}`;
-        
+
         displayRepTimes();
         resetToStanding();
         
@@ -1038,4 +1040,130 @@ async function initialize() {
   }
 }
 
+// ========== WORKOUT TRACKING ==========
+let currentWorkoutId = null;
+let currentSetReps = [];  // Store individual rep data for current set
+
+const saveSetBtn = document.getElementById('saveSetBtn');
+const setCounterEl = document.getElementById('setCounter');
+const workoutChannel = new BroadcastChannel('chronicle-workout');
+
+// Get or create current workout on page load
+async function initWorkout() {
+  try {
+    const response = await fetch('/api/workouts/current');
+    const data = await response.json();
+
+    if (data.success && data.workout) {
+      currentWorkoutId = data.workout.id;
+      updateSetCounter(data.workout.sets?.length || 0);
+    } else {
+      // Create a new workout
+      const createResponse = await fetch('/api/workouts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Squat Session' })
+      });
+      const createData = await createResponse.json();
+      if (createData.success) {
+        currentWorkoutId = createData.workout.id;
+        updateSetCounter(0);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to init workout:', err);
+  }
+}
+
+function updateSetCounter(count) {
+  if (setCounterEl) {
+    setCounterEl.textContent = `Set ${count + 1}`;
+  }
+}
+
+// Track rep data when rep is completed
+function recordRep(timeSeconds, depthInches, velocity, quality) {
+  currentSetReps.push({
+    time_seconds: timeSeconds,
+    depth: depthInches,
+    velocity: velocity,
+    quality: quality
+  });
+
+  // Update save button state
+  if (saveSetBtn) {
+    saveSetBtn.classList.toggle('has-reps', currentSetReps.length > 0);
+    saveSetBtn.textContent = `Save Set (${currentSetReps.length} reps)`;
+  }
+}
+
+// Save the current set
+async function saveSet() {
+  if (!currentWorkoutId || currentSetReps.length === 0) {
+    return;
+  }
+
+  // Calculate fatigue drop
+  let fatigueDrop = null;
+  if (currentSetReps.length >= 2) {
+    const firstVelocity = currentSetReps[0].velocity;
+    const lastVelocity = currentSetReps[currentSetReps.length - 1].velocity;
+    if (firstVelocity > 0) {
+      fatigueDrop = ((firstVelocity - lastVelocity) / firstVelocity) * 100;
+    }
+  }
+
+  try {
+    const response = await fetch(`/api/workouts/${currentWorkoutId}/sets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reps_completed: currentSetReps.length,
+        reps: currentSetReps,
+        fatigue_drop: fatigueDrop
+      })
+    });
+
+    const data = await response.json();
+    if (data.success) {
+      // Notify dashboard via BroadcastChannel
+      workoutChannel.postMessage({ type: 'SET_ADDED', set: data.set });
+
+      // Show success feedback
+      const prevText = feedbackEl.textContent;
+      feedbackEl.textContent = `✅ Set saved! ${currentSetReps.length} reps recorded`;
+
+      // Reset for next set
+      const setNum = data.set.set_number;
+      currentSetReps = [];
+      repCount = 0;
+      repTimes = [];
+      repDepths = [];
+      counterEl.textContent = 'Reps: 0';
+
+      if (saveSetBtn) {
+        saveSetBtn.classList.remove('has-reps');
+        saveSetBtn.textContent = 'Save Set';
+      }
+
+      updateSetCounter(setNum);
+
+      // Reset calibration for fresh set
+      setTimeout(() => {
+        feedbackEl.textContent = 'Ready for next set - stand still to calibrate';
+      }, 2000);
+    }
+  } catch (err) {
+    console.error('Failed to save set:', err);
+    feedbackEl.textContent = '❌ Failed to save set';
+  }
+}
+
+// Hook into save button
+if (saveSetBtn) {
+  saveSetBtn.addEventListener('click', saveSet);
+}
+
+// Initialize
 initialize();
+initWorkout();

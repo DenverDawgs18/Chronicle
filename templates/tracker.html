@@ -8,16 +8,15 @@
   <title>Chronicle - Squat Tracker</title>
 </head>
 <body>
-<!--
-<nav>
-    <div class="nav-container">
-      <a href="{{url_for('index')}}" class="nav-brand">CHRONICLE</a>
-      <div class="nav-links">
-        <a href="/logout" class="nav-link">Sign Out</a>
-      </div>
-    </div>
+<nav class="tracker-nav">
+  <a href="{{ url_for('dashboard') }}" class="nav-back" title="Back to Dashboard">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M19 12H5M12 19l-7-7 7-7"/>
+    </svg>
+    Dashboard
+  </a>
+  <span id="setCounter" class="set-counter">Set 1</span>
 </nav>
--->
 <div id="video-container">
     <video id="video" playsinline autoplay muted></video>
     <canvas id="canvas" width="640" height="480"></canvas>
@@ -30,7 +29,10 @@
         <span id="heightValue">{{ height|format_height }}</span>
       </div>
     </div>
-    <button id="resetBtn">Reset Counter</button>
+    <div class="control-buttons">
+      <button id="resetBtn">Reset</button>
+      <button id="saveSetBtn" class="save-set-btn">Save Set</button>
+    </div>
   </div>
 
   <div id="status" class="status-indicator status-standing">STANDING</div>
