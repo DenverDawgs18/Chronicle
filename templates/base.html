@@ -16,7 +16,8 @@
         {% block nav_links %}
         {% if current_user.is_authenticated %}
           {% if current_user.subscribed %}
-            <a href="{{ url_for('tracker') }}" class="nav-link primary">Tracker</a>
+            <a href="{{ url_for('tracker') }}" class="nav-link">Tracker</a>
+            <a href="{{ url_for('dashboard') }}" class="nav-link primary">Dashboard</a>
             <a href="{{ url_for('logout') }}" class="nav-link">Sign Out</a>
           {% else %}
             <a href="{{ url_for('subscribe') }}" class="nav-link primary">Subscribe</a>

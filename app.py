@@ -53,9 +53,86 @@ class User(UserMixin, db.Model):
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
-    
+
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+
+class Workout(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name = db.Column(db.String(100), default='Squat Session')
+    exercise_type = db.Column(db.String(50), default='squat')
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship('User', backref=db.backref('workouts', lazy='dynamic', order_by='Workout.created_at.desc()'))
+    sets = db.relationship('Set', backref='workout', lazy='dynamic', order_by='Set.set_number', cascade='all, delete-orphan')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'exercise_type': self.exercise_type,
+            'notes': self.notes,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'sets': [s.to_dict() for s in self.sets],
+            'total_reps': sum(s.reps_completed for s in self.sets),
+            'set_count': self.sets.count()
+        }
+
+
+class Set(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    workout_id = db.Column(db.Integer, db.ForeignKey('workout.id'), nullable=False)
+    set_number = db.Column(db.Integer, nullable=False)
+    reps_completed = db.Column(db.Integer, default=0)
+    avg_depth = db.Column(db.Float, nullable=True)  # Average depth in inches
+    avg_velocity = db.Column(db.Float, nullable=True)  # Average speed score
+    min_velocity = db.Column(db.Float, nullable=True)  # Slowest rep speed score
+    max_velocity = db.Column(db.Float, nullable=True)  # Fastest rep speed score
+    fatigue_drop = db.Column(db.Float, nullable=True)  # Percentage drop from first rep
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    reps = db.relationship('Rep', backref='set', lazy='dynamic', order_by='Rep.rep_number', cascade='all, delete-orphan')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'set_number': self.set_number,
+            'reps_completed': self.reps_completed,
+            'avg_depth': round(self.avg_depth, 1) if self.avg_depth else None,
+            'avg_velocity': round(self.avg_velocity) if self.avg_velocity else None,
+            'min_velocity': round(self.min_velocity) if self.min_velocity else None,
+            'max_velocity': round(self.max_velocity) if self.max_velocity else None,
+            'fatigue_drop': round(self.fatigue_drop, 1) if self.fatigue_drop else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'reps': [r.to_dict() for r in self.reps]
+        }
+
+
+class Rep(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    set_id = db.Column(db.Integer, db.ForeignKey('set.id'), nullable=False)
+    rep_number = db.Column(db.Integer, nullable=False)
+    depth = db.Column(db.Float, nullable=True)  # Depth in inches
+    time_seconds = db.Column(db.Float, nullable=True)  # Ascent time
+    velocity = db.Column(db.Float, nullable=True)  # Speed score
+    quality = db.Column(db.String(20), nullable=True)  # 'deep', 'parallel', 'half', 'shallow'
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'rep_number': self.rep_number,
+            'depth': round(self.depth, 1) if self.depth else None,
+            'time_seconds': round(self.time_seconds, 2) if self.time_seconds else None,
+            'velocity': round(self.velocity) if self.velocity else None,
+            'quality': self.quality
+        }
+
 
 # Create tables
 with app.app_context():
@@ -361,6 +438,219 @@ def subscription_status():
         'subscription_type': current_user.subscription_type,
         'email': current_user.email
     })
+
+
+# ========== Dashboard & Workout Tracking Routes ==========
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    if not current_user.subscribed:
+        return redirect(url_for('subscribe'))
+    return render_template('dashboard.html')
+
+
+@app.route('/api/workouts', methods=['GET'])
+@login_required
+def get_workouts():
+    """Get all workouts for the current user"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+
+    workouts = Workout.query.filter_by(user_id=current_user.id)\
+        .order_by(Workout.created_at.desc())\
+        .paginate(page=page, per_page=per_page, error_out=False)
+
+    return jsonify({
+        'success': True,
+        'workouts': [w.to_dict() for w in workouts.items],
+        'total': workouts.total,
+        'pages': workouts.pages,
+        'current_page': page
+    })
+
+
+@app.route('/api/workouts', methods=['POST'])
+@login_required
+def create_workout():
+    """Create a new workout session"""
+    data = request.get_json() or {}
+
+    workout = Workout(
+        user_id=current_user.id,
+        name=data.get('name', 'Squat Session'),
+        exercise_type=data.get('exercise_type', 'squat'),
+        notes=data.get('notes')
+    )
+    db.session.add(workout)
+    db.session.commit()
+
+    print(f"✅ Workout created for {current_user.email}: {workout.name}")
+    return jsonify({'success': True, 'workout': workout.to_dict()}), 201
+
+
+@app.route('/api/workouts/<int:workout_id>', methods=['GET'])
+@login_required
+def get_workout(workout_id):
+    """Get a specific workout with all sets and reps"""
+    workout = Workout.query.filter_by(id=workout_id, user_id=current_user.id).first()
+    if not workout:
+        return jsonify({'error': 'Workout not found'}), 404
+
+    return jsonify({'success': True, 'workout': workout.to_dict()})
+
+
+@app.route('/api/workouts/<int:workout_id>', methods=['PUT'])
+@login_required
+def update_workout(workout_id):
+    """Update a workout (name, notes, complete it)"""
+    workout = Workout.query.filter_by(id=workout_id, user_id=current_user.id).first()
+    if not workout:
+        return jsonify({'error': 'Workout not found'}), 404
+
+    data = request.get_json() or {}
+
+    if 'name' in data:
+        workout.name = data['name']
+    if 'notes' in data:
+        workout.notes = data['notes']
+    if data.get('complete'):
+        workout.completed_at = datetime.utcnow()
+
+    db.session.commit()
+    return jsonify({'success': True, 'workout': workout.to_dict()})
+
+
+@app.route('/api/workouts/<int:workout_id>', methods=['DELETE'])
+@login_required
+def delete_workout(workout_id):
+    """Delete a workout and all its sets/reps"""
+    workout = Workout.query.filter_by(id=workout_id, user_id=current_user.id).first()
+    if not workout:
+        return jsonify({'error': 'Workout not found'}), 404
+
+    db.session.delete(workout)
+    db.session.commit()
+
+    print(f"✅ Workout deleted for {current_user.email}: {workout.name}")
+    return jsonify({'success': True})
+
+
+@app.route('/api/workouts/<int:workout_id>/sets', methods=['POST'])
+@login_required
+def add_set(workout_id):
+    """Add a completed set to a workout"""
+    workout = Workout.query.filter_by(id=workout_id, user_id=current_user.id).first()
+    if not workout:
+        return jsonify({'error': 'Workout not found'}), 404
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Set data required'}), 400
+
+    # Get the next set number
+    last_set = Set.query.filter_by(workout_id=workout_id).order_by(Set.set_number.desc()).first()
+    set_number = (last_set.set_number + 1) if last_set else 1
+
+    # Calculate metrics from reps data
+    reps_data = data.get('reps', [])
+    velocities = [r.get('velocity') for r in reps_data if r.get('velocity')]
+    depths = [r.get('depth') for r in reps_data if r.get('depth')]
+
+    new_set = Set(
+        workout_id=workout_id,
+        set_number=set_number,
+        reps_completed=data.get('reps_completed', len(reps_data)),
+        avg_depth=sum(depths) / len(depths) if depths else None,
+        avg_velocity=sum(velocities) / len(velocities) if velocities else None,
+        min_velocity=min(velocities) if velocities else None,
+        max_velocity=max(velocities) if velocities else None,
+        fatigue_drop=data.get('fatigue_drop')
+    )
+    db.session.add(new_set)
+    db.session.flush()  # Get the set ID
+
+    # Add individual reps
+    for i, rep_data in enumerate(reps_data):
+        rep = Rep(
+            set_id=new_set.id,
+            rep_number=i + 1,
+            depth=rep_data.get('depth'),
+            time_seconds=rep_data.get('time_seconds'),
+            velocity=rep_data.get('velocity'),
+            quality=rep_data.get('quality')
+        )
+        db.session.add(rep)
+
+    db.session.commit()
+
+    print(f"✅ Set {set_number} added to workout for {current_user.email}: {new_set.reps_completed} reps")
+    return jsonify({'success': True, 'set': new_set.to_dict()}), 201
+
+
+@app.route('/api/workouts/<int:workout_id>/sets/<int:set_id>', methods=['DELETE'])
+@login_required
+def delete_set(workout_id, set_id):
+    """Delete a specific set"""
+    workout = Workout.query.filter_by(id=workout_id, user_id=current_user.id).first()
+    if not workout:
+        return jsonify({'error': 'Workout not found'}), 404
+
+    set_to_delete = Set.query.filter_by(id=set_id, workout_id=workout_id).first()
+    if not set_to_delete:
+        return jsonify({'error': 'Set not found'}), 404
+
+    db.session.delete(set_to_delete)
+    db.session.commit()
+
+    return jsonify({'success': True})
+
+
+@app.route('/api/workouts/current', methods=['GET'])
+@login_required
+def get_current_workout():
+    """Get the most recent incomplete workout, or create a new one"""
+    workout = Workout.query.filter_by(
+        user_id=current_user.id,
+        completed_at=None
+    ).order_by(Workout.created_at.desc()).first()
+
+    if workout:
+        return jsonify({'success': True, 'workout': workout.to_dict()})
+    else:
+        return jsonify({'success': True, 'workout': None})
+
+
+@app.route('/api/stats', methods=['GET'])
+@login_required
+def get_stats():
+    """Get user's overall workout statistics"""
+    total_workouts = Workout.query.filter_by(user_id=current_user.id).count()
+    total_sets = db.session.query(Set).join(Workout).filter(Workout.user_id == current_user.id).count()
+    total_reps = db.session.query(db.func.sum(Set.reps_completed)).join(Workout).filter(Workout.user_id == current_user.id).scalar() or 0
+
+    # Get recent velocity trend (last 10 sets)
+    recent_sets = db.session.query(Set).join(Workout)\
+        .filter(Workout.user_id == current_user.id)\
+        .order_by(Set.created_at.desc())\
+        .limit(10).all()
+
+    avg_velocity = None
+    if recent_sets:
+        velocities = [s.avg_velocity for s in recent_sets if s.avg_velocity]
+        if velocities:
+            avg_velocity = sum(velocities) / len(velocities)
+
+    return jsonify({
+        'success': True,
+        'stats': {
+            'total_workouts': total_workouts,
+            'total_sets': total_sets,
+            'total_reps': total_reps,
+            'avg_velocity': round(avg_velocity) if avg_velocity else None
+        }
+    })
+
 
 if __name__ == '__main__':
     app.run(debug=True)

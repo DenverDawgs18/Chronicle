@@ -4,6 +4,85 @@ body {
   flex-direction: column;
 }
 
+/* Tracker Navigation */
+.tracker-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: rgba(15, 15, 35, 0.8);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 200;
+}
+
+.nav-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.nav-back:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.nav-back svg {
+  flex-shrink: 0;
+}
+
+.set-counter {
+  font-size: 14px;
+  font-weight: 600;
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.15);
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+}
+
+/* Control Buttons */
+.control-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+/* Save Set Button */
+.save-set-btn {
+  background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%) !important;
+  border: none !important;
+  font-weight: 600 !important;
+}
+
+.save-set-btn:hover {
+  box-shadow: 0 6px 24px rgba(96, 165, 250, 0.4) !important;
+}
+
+.save-set-btn.has-reps {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 4px 16px rgba(96, 165, 250, 0.3);
+  }
+  50% {
+    box-shadow: 0 4px 24px rgba(96, 165, 250, 0.6);
+  }
+}
+
 #video-container {
       position: fixed;
       top: 0;
@@ -33,7 +112,7 @@ body {
 
     #controls {
       position: fixed;
-      top: 20px;
+      top: 76px;
       left: 50%;
       transform: translateX(-50%);
       display: flex;
@@ -44,7 +123,7 @@ body {
 
     #counter {
       position: fixed;
-      top: 20px;
+      top: 76px;
       right: 20px;
       z-index: 100;
       background: rgba(255, 255, 255, 0.1);
@@ -62,7 +141,7 @@ body {
 
     #status {
       position: fixed;
-      top: 120px;
+      top: 176px;
       right: 20px;
       z-index: 100;
       padding: 12px 20px;
@@ -243,6 +322,21 @@ body {
     }
 
     @media (max-width: 768px) {
+      .tracker-nav {
+        height: 48px;
+        padding: 0 12px;
+      }
+
+      .nav-back {
+        font-size: 13px;
+        padding: 6px 10px;
+      }
+
+      .set-counter {
+        font-size: 12px;
+        padding: 4px 10px;
+      }
+
       video, canvas {
         max-width: 75%;
         max-height: 70%;
@@ -252,9 +346,14 @@ body {
         flex-wrap: wrap;
         max-width: calc(100% - 120px);
         gap: 8px;
-        top: 10px;
+        top: 64px;
       }
-      
+
+      .control-buttons {
+        flex-direction: column;
+        gap: 6px;
+      }
+
       button {
         padding: 10px 12px;
         font-size: 12px;
@@ -280,22 +379,22 @@ body {
       #status {
         font-size: 10px;
         padding: 8px 12px;
-        top: 10px;
+        top: 140px;
       }
-      
+
       #counter {
         font-size: 1.6em;
         padding: 12px 16px;
         min-width: 90px;
-        top: 10px;
+        top: 64px;
         right: 10px;
       }
-      
+
       .content-stack {
         bottom: 10px;
         gap: 8px;
       }
-      
+
       #feedback, #msg {
         font-size: 0.85em;
         padding: 10px 14px;
@@ -307,9 +406,18 @@ body {
     }
 
     @media (max-width: 480px) {
+      .tracker-nav {
+        height: 44px;
+      }
+
+      .nav-back span {
+        display: none;
+      }
+
       #controls {
         gap: 6px;
         max-width: calc(100% - 100px);
+        top: 58px;
       }
 
       button {
@@ -332,5 +440,13 @@ body {
       #heightValue {
         font-size: 11px;
         min-width: 45px;
+      }
+
+      #counter {
+        top: 58px;
+      }
+
+      #status {
+        top: 130px;
       }
     }
