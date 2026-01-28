@@ -1,4 +1,4 @@
-// ========== HYPERPARAMETERS - FIXED VERSION ==========
+// ========== HYPERPARAMETERS - UPDATED VERSION ==========
 const MIN_DEPTH_INCHES = 6;
 const DESCENT_THRESHOLD_INCHES = 3.5;  // Balanced between Doc1 and Doc2
 const STABILITY_FRAMES = 6;
@@ -20,22 +20,31 @@ const VELOCITY_DROP_WARNING = 10;
 const VELOCITY_DROP_CRITICAL = 20;
 const SPEED_SCORE_MULTIPLIER = 1000;
 
-const MIN_STANDING_TIME_MS = 1500;  // Longer to avoid false positives during unracking
+const MIN_STANDING_TIME_MS = 800;  // Reduced for better responsiveness
 const SIDE_LOCK_CONFIDENCE_THRESHOLD = 0.15;
 const QUICK_CALIBRATION_MODE = true;
-const DESCENT_VELOCITY_MIN = 0.0015;  // Balanced sensitivity
+const DESCENT_VELOCITY_MIN = 0.0012;  // Increased sensitivity
 const DRIFT_WARNING_THRESHOLD = 3;
 const DRIFT_CRITICAL_THRESHOLD = 6;
 
-const DEPTH_TRIGGER_MULTIPLIER = 1.3;  // Higher to reduce false positives
+const DEPTH_TRIGGER_MULTIPLIER = 1.15;  // Reduced for easier rep start
 const BASELINE_UPDATE_ALPHA = 0.2;
 const REBASELINE_STABILITY_FRAMES = 10;
 const RECOVERY_WARNING_THRESHOLD = 50;
 const TRACKING_LOSS_TOLERANCE_FRAMES = 30;
 
+// NEW: Auto-recalibration and stricter state timeouts
+const RECALIBRATION_TIMEOUT_MS = 8000;  // Recalibrate if no squat within 15s
+const MAX_DESCENT_TIME_MS = 6000;  // Stricter timeout for descending
+const MAX_ASCENT_TIME_MS = 6000;  // Stricter timeout for ascending
+const HORIZONTAL_MOVEMENT_THRESHOLD = 0.08;  // Ignore horizontal drift during standing
+
 // DEBUG MODE
 const DEBUG_MODE = true;
 // ======================================================================
+
+// TODO : Write tests for this file
+// TODO: Improve file wherever needed 
 
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
@@ -84,6 +93,11 @@ let potentialNewBaseline = null;
 
 let trackingLossFrames = 0;
 
+// NEW: Track last squat time and standing hip X for horizontal movement detection
+let lastSquatStartTime = null;
+let calibrationCompletedTime = null;
+let standingHipX = null;
+
 let debugInfo = {};
 
 function getUserHeightInches() {
@@ -117,9 +131,12 @@ resetBtn.addEventListener('click', () => {
   rebaselineStabilityCount = 0;
   potentialNewBaseline = null;
   trackingLossFrames = 0;
+  lastSquatStartTime = null;
+  calibrationCompletedTime = null;
   
   if (!keepCalibration) {
     standingHipY = null;
+    standingHipX = null;
     hipKneeDistance = null;
     inchesPerUnit = null;
     isCalibrated = false;
@@ -266,7 +283,7 @@ function detectSquat(landmarks) {
   
   trackingLossFrames = 0;
   
-  // FIXED: Use KNEE visibility for side detection (hips have bugged equal visibility)
+  // Use KNEE visibility for side detection (hips have bugged equal visibility)
   if (lockedSide === null) {
     // Use knee visibility since hip visibility is bugged
     const leftKneeVis = leftKnee ? (leftKnee.visibility || 0) : 0;
@@ -303,7 +320,25 @@ function detectSquat(landmarks) {
   const hip = useLeft ? leftHip : rightHip;
   const knee = useLeft ? leftKnee : rightKnee;
   const hipY = hip.y;
+  const hipX = hip.x;
   const kneeY = knee.y;
+  
+  // ========== AUTO-RECALIBRATION CHECK ==========
+  if (isCalibrated && calibrationCompletedTime && state === 'standing' && lastSquatStartTime === null) {
+    const timeSinceCalibration = performance.now() - calibrationCompletedTime;
+    
+    if (timeSinceCalibration > RECALIBRATION_TIMEOUT_MS) {
+      // Force recalibration
+      isCalibrated = false;
+      calibrationHipYValues = [];
+      standingHipY = null;
+      standingHipX = null;
+      stableFrameCount = 0;
+      calibrationCompletedTime = null;
+      feedbackEl.textContent = "Auto-recalibrating - stay still";
+      return;
+    }
+  }
   
   // ========== CALIBRATION ==========
   if (!isCalibrated && state === 'standing') {
@@ -317,6 +352,7 @@ function detectSquat(landmarks) {
     if (calibrationHipYValues.length === 0) {
       calibrationHipYValues.push(hipY);
       hipKneeDistance = currentHipKneeDist;
+      standingHipX = hipX;
       userHeightInches = getUserHeightInches();
       feedbackEl.textContent = "Hold still for calibration... 1/" + CALIBRATION_SAMPLES;
       return;
@@ -334,8 +370,10 @@ function detectSquat(landmarks) {
       
       if (calibrationHipYValues.length >= CALIBRATION_SAMPLES) {
         standingHipY = calibrationHipYValues.reduce((a, b) => a + b, 0) / calibrationHipYValues.length;
+        standingHipX = hipX;
         stableFrameCount = STABILITY_FRAMES;
         stableStandingStartTime = performance.now();
+        calibrationCompletedTime = performance.now();
         
         const expectedHipKneeInches = userHeightInches * HIP_KNEE_RATIO;
         inchesPerUnit = expectedHipKneeInches / hipKneeDistance;
@@ -376,11 +414,20 @@ function detectSquat(landmarks) {
     ? velocityHistory.reduce((a, b) => a + b, 0) / velocityHistory.length
     : 0;
   
-  // ========== STATE TIMEOUT CHECK ==========
-  if ((state === 'descending' || state === 'ascending') && stateStartTime) {
+  // ========== STATE TIMEOUT CHECK - STRICTER ==========
+  if (state === 'descending' && stateStartTime) {
     const timeInState = performance.now() - stateStartTime;
-    if (timeInState > MAX_STATE_TIME) {
-      feedbackEl.textContent = "Rep stuck - auto reset";
+    if (timeInState > MAX_DESCENT_TIME_MS) {
+      feedbackEl.textContent = "Descent too slow - resetting";
+      resetToStanding();
+      return;
+    }
+  }
+  
+  if (state === 'ascending' && stateStartTime) {
+    const timeInState = performance.now() - stateStartTime;
+    if (timeInState > MAX_ASCENT_TIME_MS) {
+      feedbackEl.textContent = "Ascent stalled - resetting";
       resetToStanding();
       return;
     }
@@ -389,11 +436,14 @@ function detectSquat(landmarks) {
   // ========== BASELINE STABILITY & DRIFT HANDLING ==========
   if (state === 'standing') {
     const distanceFromBaseline = Math.abs(hipY - standingHipY);
+    const horizontalMovement = standingHipX ? Math.abs(hipX - standingHipX) : 0;
     const toleranceNorm = inchesToNorm(BASELINE_TOLERANCE_INCHES);
     const currentDepthNorm = hipY - standingHipY;
     const descentThresholdNorm = inchesToNorm(DESCENT_THRESHOLD_INCHES);
     
-    const isStartingSquat = currentDepthNorm > descentThresholdNorm * 0.5;
+    // Check if this looks like a squat start (vertical movement) vs horizontal drift (reracking)
+    const isVerticalMovement = distanceFromBaseline > horizontalMovement * 1.5;
+    const isStartingSquat = isVerticalMovement && currentDepthNorm > descentThresholdNorm * 0.4;
     
     if (!isStartingSquat && distanceFromBaseline < toleranceNorm) {
       stableFrameCount = Math.min(STABILITY_FRAMES, stableFrameCount + 1);
@@ -404,41 +454,50 @@ function detectSquat(landmarks) {
         stableStandingStartTime = performance.now();
       }
     } else if (!isStartingSquat) {
-      stableFrameCount = Math.max(0, stableFrameCount - 1);
-      stableStandingStartTime = null;
-      
-      const driftInches = normToInches(distanceFromBaseline);
-      
-      const isStablePosition = velocityHistory.length >= 3 && 
-        Math.abs(avgVelocity) < VELOCITY_THRESHOLD * 2;
-      
-      if (isStablePosition && driftInches > DRIFT_CRITICAL_THRESHOLD) {
-        if (potentialNewBaseline === null || Math.abs(hipY - potentialNewBaseline) < toleranceNorm * 0.5) {
-          potentialNewBaseline = hipY;
-          rebaselineStabilityCount++;
-          
-          if (rebaselineStabilityCount >= REBASELINE_STABILITY_FRAMES) {
-            standingHipY = potentialNewBaseline;
-            stableFrameCount = STABILITY_FRAMES;
-            stableStandingStartTime = performance.now();
+      // Only warn/recalibrate if it's not horizontal movement
+      if (horizontalMovement > HORIZONTAL_MOVEMENT_THRESHOLD) {
+        // Likely reracking - don't penalize
+        stableFrameCount = Math.max(0, stableFrameCount - 1);
+        stableStandingStartTime = null;
+      } else {
+        // Vertical drift - handle as before
+        stableFrameCount = Math.max(0, stableFrameCount - 1);
+        stableStandingStartTime = null;
+        
+        const driftInches = normToInches(distanceFromBaseline);
+        
+        const isStablePosition = velocityHistory.length >= 3 && 
+          Math.abs(avgVelocity) < VELOCITY_THRESHOLD * 2;
+        
+        if (isStablePosition && driftInches > DRIFT_CRITICAL_THRESHOLD) {
+          if (potentialNewBaseline === null || Math.abs(hipY - potentialNewBaseline) < toleranceNorm * 0.5) {
+            potentialNewBaseline = hipY;
+            rebaselineStabilityCount++;
+            
+            if (rebaselineStabilityCount >= REBASELINE_STABILITY_FRAMES) {
+              standingHipY = potentialNewBaseline;
+              standingHipX = hipX;
+              stableFrameCount = STABILITY_FRAMES;
+              stableStandingStartTime = performance.now();
+              rebaselineStabilityCount = 0;
+              potentialNewBaseline = null;
+              feedbackEl.textContent = `✓ Position updated - ready to squat`;
+            } else {
+              feedbackEl.textContent = `Detecting new position... ${rebaselineStabilityCount}/${REBASELINE_STABILITY_FRAMES}`;
+            }
+          } else {
             rebaselineStabilityCount = 0;
             potentialNewBaseline = null;
-            feedbackEl.textContent = `✓ Position updated - ready to squat`;
-          } else {
-            feedbackEl.textContent = `Detecting new position... ${rebaselineStabilityCount}/${REBASELINE_STABILITY_FRAMES}`;
           }
         } else {
           rebaselineStabilityCount = 0;
           potentialNewBaseline = null;
-        }
-      } else {
-        rebaselineStabilityCount = 0;
-        potentialNewBaseline = null;
-        
-        if (driftInches > DRIFT_WARNING_THRESHOLD) {
-          feedbackEl.textContent = `⚠ ${driftInches.toFixed(1)}" from baseline - stand still`;
-        } else if (stableFrameCount > 0 && stableFrameCount < STABILITY_FRAMES) {
-          feedbackEl.textContent = `Stabilizing... ${stableFrameCount}/${STABILITY_FRAMES}`;
+          
+          if (driftInches > DRIFT_WARNING_THRESHOLD) {
+            feedbackEl.textContent = `⚠ ${driftInches.toFixed(1)}" from baseline - stand still`;
+          } else if (stableFrameCount > 0 && stableFrameCount < STABILITY_FRAMES) {
+            feedbackEl.textContent = `Stabilizing... ${stableFrameCount}/${STABILITY_FRAMES}`;
+          }
         }
       }
     } else if (stableFrameCount > 0 && stableFrameCount < STABILITY_FRAMES) {
@@ -481,6 +540,7 @@ function detectSquat(landmarks) {
         stableStandingStartTime = null;
         rebaselineStabilityCount = 0;
         potentialNewBaseline = null;
+        lastSquatStartTime = performance.now();
         
         const quality = getDepthQuality(currentDepthInches);
         feedbackEl.textContent = `⬇ Descending... ${quality.emoji}`;
@@ -722,7 +782,7 @@ function drawPose(results) {
     ctx.save();
     ctx.scale(-1, 1);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-    ctx.fillRect(-canvas.width, 0, 350, 280);
+    ctx.fillRect(-canvas.width, 0, 350, 320);
     
     ctx.fillStyle = '#00FF00';
     ctx.font = '11px monospace';
@@ -764,6 +824,14 @@ function drawPose(results) {
       ctx.fillText(`Inches/Unit: ${inchesPerUnit.toFixed(2)}`, -canvas.width + 10, y);
       y += 15;
       ctx.fillText(`State: ${state}`, -canvas.width + 10, y);
+      y += 15;
+      
+      if (calibrationCompletedTime && lastSquatStartTime === null) {
+        const timeSinceCalibration = performance.now() - calibrationCompletedTime;
+        const secondsRemaining = Math.ceil((RECALIBRATION_TIMEOUT_MS - timeSinceCalibration) / 1000);
+        ctx.fillText(`Recalib in: ${secondsRemaining}s`, -canvas.width + 10, y);
+        y += 15;
+      }
     }
     
     ctx.restore();
