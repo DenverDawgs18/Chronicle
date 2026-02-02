@@ -27,7 +27,7 @@ const DESCENT_VELOCITY_MIN = 0.0012;  // Increased sensitivity
 const DRIFT_WARNING_THRESHOLD = 3;
 const DRIFT_CRITICAL_THRESHOLD = 6;
 
-const DEPTH_TRIGGER_MULTIPLIER = 1.15;  // Reduced for easier rep start
+const DEPTH_TRIGGER_MULTIPLIER = 1.5;  // Require meaningful depth to bypass velocity check
 const BASELINE_UPDATE_ALPHA = 0.2;
 const REBASELINE_STABILITY_FRAMES = 10;
 const RECOVERY_WARNING_THRESHOLD = 50;
@@ -40,9 +40,9 @@ const MAX_ASCENT_TIME_MS = 6000;  // Stricter timeout for ascending
 const HORIZONTAL_MOVEMENT_THRESHOLD = 0.08;  // Ignore horizontal drift during standing
 
 // Position smoothing and outlier detection
-const POSITION_SMOOTHING_ALPHA = 0.3;  // Lower = more smoothing
-const OUTLIER_THRESHOLD_MULTIPLIER = 3.0;  // Reject jumps > 3x typical movement
-const MIN_FRAMES_FOR_OUTLIER_DETECTION = 5;
+const POSITION_SMOOTHING_ALPHA = 0.5;  // Higher = more responsive tracking
+const OUTLIER_THRESHOLD_MULTIPLIER = 6.0;  // Only reject extreme spikes, not squat movements
+const MIN_FRAMES_FOR_OUTLIER_DETECTION = 10;  // Need more data before rejecting frames
 const VELOCITY_EMA_ALPHA = 0.4;  // Exponential moving average for velocity
 
 // DEBUG MODE
@@ -105,7 +105,7 @@ let standingHipX = null;
 let smoothedHipY = null;
 let smoothedHipX = null;
 let positionHistory = [];
-let typicalMovementMagnitude = 0.01;  // Running estimate of normal frame-to-frame movement
+let typicalMovementMagnitude = 0.005;  // Running estimate of normal frame-to-frame movement
 let smoothedVelocity = 0;  // EMA-smoothed velocity
 
 let debugInfo = {};
@@ -216,10 +216,10 @@ function isOutlierMovement(newY, previousY) {
  */
 function updateTypicalMovement(movement) {
   if (positionHistory.length >= MIN_FRAMES_FOR_OUTLIER_DETECTION) {
-    // Use EMA to update typical movement
-    typicalMovementMagnitude = typicalMovementMagnitude * 0.95 + Math.abs(movement) * 0.05;
-    // Clamp to reasonable bounds
-    typicalMovementMagnitude = Math.max(0.001, Math.min(0.05, typicalMovementMagnitude));
+    // Use EMA to update typical movement - faster adaptation so squats aren't rejected
+    typicalMovementMagnitude = typicalMovementMagnitude * 0.9 + Math.abs(movement) * 0.1;
+    // Higher floor prevents standing sway from setting an impossibly low threshold
+    typicalMovementMagnitude = Math.max(0.005, Math.min(0.05, typicalMovementMagnitude));
   }
 }
 
@@ -642,6 +642,7 @@ function detectSquat(landmarks) {
         updateStatus('descending');
         deepestHipY = hipY;
         velocityHistory = [];
+        smoothedVelocity = 0;
         stableStandingStartTime = null;
         rebaselineStabilityCount = 0;
         potentialNewBaseline = null;
@@ -667,6 +668,7 @@ function detectSquat(landmarks) {
           updateStatus('ascending');
           ascentStartTime = performance.now();
           velocityHistory = [];
+          smoothedVelocity = 0;
           
           const quality = getDepthQuality(maxDepthInches);
           feedbackEl.textContent = `⬆ Drive up! ${quality.emoji} ${quality.label}`;
