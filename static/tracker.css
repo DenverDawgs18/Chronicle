@@ -56,6 +56,12 @@ body {
 /* Exercise Selector */
 .exercise-selector {
   display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.exercise-selector-group {
+  display: flex;
   gap: 2px;
   background: rgba(255, 255, 255, 0.08);
   border-radius: 10px;
@@ -385,6 +391,12 @@ body {
       .set-counter {
         font-size: 12px;
         padding: 4px 10px;
+      }
+
+      .exercise-selector {
+        flex-wrap: wrap;
+        gap: 3px;
+        justify-content: center;
       }
 
       .exercise-option {

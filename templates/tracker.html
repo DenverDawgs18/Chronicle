@@ -16,8 +16,17 @@
     Dashboard
   </a>
   <div class="exercise-selector">
-    <button class="exercise-option {{ 'active' if exercise_type == 'squat' else '' }}" data-exercise="squat" onclick="setExercise('squat')">Squat</button>
-    <button class="exercise-option {{ 'active' if exercise_type == 'deadlift' else '' }}" data-exercise="deadlift" onclick="setExercise('deadlift')">Deadlift</button>
+    <div class="exercise-selector-group">
+      <button class="exercise-option {{ 'active' if exercise_type == 'squat' else '' }}" data-exercise="squat" onclick="setExercise('squat')">Squat</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'hack-squat' else '' }}" data-exercise="hack-squat" onclick="setExercise('hack-squat')">Hack</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'bulgarian-squat' else '' }}" data-exercise="bulgarian-squat" onclick="setExercise('bulgarian-squat')">Bulgarian</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'split-squat' else '' }}" data-exercise="split-squat" onclick="setExercise('split-squat')">Split</button>
+    </div>
+    <div class="exercise-selector-group">
+      <button class="exercise-option {{ 'active' if exercise_type == 'deadlift' else '' }}" data-exercise="deadlift" onclick="setExercise('deadlift')">Deadlift</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'rdl' else '' }}" data-exercise="rdl" onclick="setExercise('rdl')">RDL</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'single-leg-rdl' else '' }}" data-exercise="single-leg-rdl" onclick="setExercise('single-leg-rdl')">SL-RDL</button>
+    </div>
   </div>
   <span id="setCounter" class="set-counter">Set 1</span>
   <span id="programExerciseIndicator" class="program-indicator hidden"></span>
@@ -42,7 +51,7 @@
 
   <div id="status" class="status-indicator status-standing">STANDING</div>
   <div id="counter">Reps: 0</div>
-  
+
   <div class="content-stack">
     <div id="msg">Your rep speed will show up here</div>
     <div id="feedback">Allow Camera for tracking</div>
@@ -52,25 +61,36 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.1/drawing_utils.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.1/camera_utils.js"></script>
-  
+
   <script>
     // Height slider functionality
     const heightSlider = document.getElementById('heightSlider');
     const heightValue = document.getElementById('heightValue');
-    
+
     function updateHeightDisplay(inches) {
       const feet = Math.floor(inches / 12);
       const remainingInches = inches % 12;
       heightValue.textContent = `${feet}'${remainingInches}"`;
     }
-    
+
     heightSlider.addEventListener('input', (e) => {
       updateHeightDisplay(parseInt(e.target.value));
     });
-    
+
     // Initialize display
     updateHeightDisplay(parseInt(heightSlider.value));
   </script>
+
+  <!-- Exercise modules (load in order: base -> exercises -> registry -> orchestrator) -->
+  <script src="{{ url_for('static', filename='exercises/base.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/squat.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/deadlift.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/rdl.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/single-leg-rdl.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/hack-squat.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/bulgarian-squat.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/split-squat.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/registry.js') }}"></script>
   <script src="{{ url_for('static', filename='squat.js') }}"></script>
 </body>
 </html>

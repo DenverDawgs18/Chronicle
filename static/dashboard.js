@@ -181,8 +181,9 @@ function renderCurrentSets() {
     return;
   }
 
-  const isDeadlift = currentWorkout.exercise_type === 'deadlift';
-  const depthLabel = isDeadlift ? 'Hip Rise' : 'Avg Depth';
+  const hingeExercises = ['deadlift', 'rdl', 'single-leg-rdl'];
+  const isHinge = hingeExercises.includes(currentWorkout.exercise_type);
+  const depthLabel = isHinge ? 'ROM' : 'Avg Depth';
 
   currentSetsEl.innerHTML = currentWorkout.sets.map(set => `
     <div class="set-card" data-set-id="${set.id}">
@@ -329,8 +330,8 @@ function renderWorkoutHistory(append = false) {
   }
 
   const html = historyWorkouts.map(workout => {
-    const isDL = workout.exercise_type === 'deadlift';
-    const dLabel = isDL ? 'Hip Rise' : 'Depth';
+    const hingeTypes = ['deadlift', 'rdl', 'single-leg-rdl'];
+    const dLabel = hingeTypes.includes(workout.exercise_type) ? 'ROM' : 'Depth';
     return `
     <div class="history-card glass-card" data-workout-id="${workout.id}" onclick="toggleWorkoutDetails(${workout.id})">
       <div class="history-header">

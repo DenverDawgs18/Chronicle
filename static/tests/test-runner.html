@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Chronicle Exercise Tests</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace;
+      background: #0f0f23;
+      color: #e0e0e0;
+      padding: 24px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 24px;
+      margin-bottom: 20px;
+      color: #60a5fa;
+    }
+
+    .test-summary {
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      font-size: 18px;
+    }
+
+    .test-summary.all-pass {
+      background: rgba(34, 197, 94, 0.15);
+      border: 1px solid rgba(34, 197, 94, 0.4);
+      color: #4ade80;
+    }
+
+    .test-summary.has-failures {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #f87171;
+    }
+
+    .test-summary h2 { margin-bottom: 8px; }
+    .test-summary p { opacity: 0.8; }
+
+    .test-suite {
+      margin-bottom: 12px;
+      padding: 16px;
+      border-radius: 8px;
+    }
+
+    .test-suite.pass {
+      background: rgba(34, 197, 94, 0.08);
+      border: 1px solid rgba(34, 197, 94, 0.2);
+    }
+
+    .test-suite.fail {
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .test-suite h3 {
+      font-size: 14px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .test-suite.pass h3 { color: #4ade80; }
+    .test-suite.fail h3 { color: #f87171; }
+
+    .count {
+      font-weight: 400;
+      opacity: 0.7;
+    }
+
+    .failures {
+      list-style: none;
+      padding: 0;
+    }
+
+    .failures li {
+      padding: 8px 12px;
+      margin: 4px 0;
+      background: rgba(239, 68, 68, 0.1);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+
+    .failures li strong {
+      color: #f87171;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .failures li code {
+      color: #fbbf24;
+      font-size: 12px;
+    }
+
+    #console-output {
+      margin-top: 20px;
+      padding: 16px;
+      background: rgba(0, 0, 0, 0.5);
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      color: #a0a0a0;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #60a5fa;
+    }
+  </style>
+</head>
+<body>
+  <h1>Chronicle Exercise Module Tests</h1>
+  <div id="results"><div class="loading">Running tests...</div></div>
+  <div id="console-output"></div>
+
+  <!-- Load exercise modules (same order as tracker.html) -->
+  <script src="/static/exercises/base.js"></script>
+  <script src="/static/exercises/squat.js"></script>
+  <script src="/static/exercises/deadlift.js"></script>
+  <script src="/static/exercises/rdl.js"></script>
+  <script src="/static/exercises/single-leg-rdl.js"></script>
+  <script src="/static/exercises/hack-squat.js"></script>
+  <script src="/static/exercises/bulgarian-squat.js"></script>
+  <script src="/static/exercises/split-squat.js"></script>
+  <script src="/static/exercises/registry.js"></script>
+
+  <!-- Load test framework and tests -->
+  <script src="/static/tests/test-helpers.js"></script>
+  <script src="/static/tests/test-base.js"></script>
+  <script src="/static/tests/test-exercises.js"></script>
+
+  <!-- Run and render -->
+  <script>
+    // Render results
+    TestHelpers.renderResults('results');
+
+    // Show console output
+    const output = TestHelpers.printResults();
+    document.getElementById('console-output').textContent = output;
+
+    // Restore performance.now
+    TestHelpers.restoreTime();
+
+    // Also log to console
+    console.log(output);
+
+    // Set page title based on results
+    if (TestHelpers.results.failed === 0) {
+      document.title = `PASS - Chronicle Tests (${TestHelpers.results.passed}/${TestHelpers.results.passed + TestHelpers.results.failed})`;
+    } else {
+      document.title = `FAIL - Chronicle Tests (${TestHelpers.results.failed} failures)`;
+    }
+  </script>
+</body>
+</html>
