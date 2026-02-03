@@ -15,6 +15,9 @@ require('../exercises/single-leg-rdl.js');
 require('../exercises/hack-squat.js');
 require('../exercises/bulgarian-squat.js');
 require('../exercises/split-squat.js');
+require('../exercises/general-squat.js');
+require('../exercises/general-lunge.js');
+require('../exercises/general-hinge.js');
 require('../exercises/registry.js');
 
 // Load test framework

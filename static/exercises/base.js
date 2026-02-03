@@ -31,8 +31,9 @@ Chronicle.CONSTANTS = {
   MAX_ASCENT_TIME_MS: 6000,
   MAX_STATE_TIME: 10000,
 
-  // Depth quality
+  // Depth quality & speed score normalization
   SPEED_SCORE_MULTIPLIER: 1000,
+  STANDARD_REFERENCE_DEPTH: 15,    // Back squat parallel depth (inches) - normalization baseline
   VELOCITY_DROP_WARNING: 10,
   VELOCITY_DROP_CRITICAL: 20,
 
@@ -141,12 +142,28 @@ Chronicle.utils = {
   },
 
   /**
-   * Calculate speed score from time and distance
+   * Calculate speed score from time and distance, normalized across exercises.
+   * The referenceDepth parameter ensures that the same speed of movement
+   * produces roughly the same score regardless of exercise type.
+   *
+   * @param {number} timeSeconds - Ascent/concentric duration
+   * @param {number} depthInches - Measured ROM in inches (hip drop, hip rise, etc.)
+   * @param {number} [referenceDepth] - Expected ROM for a "good rep" of this exercise (inches).
+   *   If provided, the depth is scaled so all exercises produce comparable scores.
+   *   If omitted, raw depth is used (backward compatible).
    */
-  calculateSpeedScore: function(timeSeconds, depthInches) {
+  calculateSpeedScore: function(timeSeconds, depthInches, referenceDepth) {
     if (depthInches <= 0 || timeSeconds <= 0) return 0;
-    const timePerInch = timeSeconds / depthInches;
-    return Math.round(Chronicle.CONSTANTS.SPEED_SCORE_MULTIPLIER / timePerInch);
+    const C = Chronicle.CONSTANTS;
+    // Normalize: scale depth so that a rep at the reference depth maps to
+    // the standard baseline (back squat parallel ~15"). This means a 1-second
+    // rep at the exercise's reference depth produces the same score for all exercises.
+    let effectiveDepth = depthInches;
+    if (referenceDepth && referenceDepth > 0) {
+      effectiveDepth = depthInches * (C.STANDARD_REFERENCE_DEPTH / referenceDepth);
+    }
+    const timePerInch = timeSeconds / effectiveDepth;
+    return Math.round(C.SPEED_SCORE_MULTIPLIER / timePerInch);
   },
 
   /**

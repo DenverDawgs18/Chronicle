@@ -11,9 +11,9 @@
 
   // ========== REGISTRY ==========
   suite('Exercise Registry', function() {
-    test('all 7 exercises registered', function() {
+    test('all 10 exercises registered', function() {
       const keys = Chronicle.registry.keys();
-      assert(keys.length >= 7, `Expected >= 7 exercises, got ${keys.length}`);
+      assert(keys.length >= 10, `Expected >= 10 exercises, got ${keys.length}`);
     });
 
     test('squat is registered', function() {
@@ -64,6 +64,18 @@
       assert(cats.hasOwnProperty('deadlift'), 'should have deadlift category');
     });
 
+    test('general-squat is registered', function() {
+      assert(Chronicle.registry.get('general-squat') !== null, 'general-squat not found');
+    });
+
+    test('general-lunge is registered', function() {
+      assert(Chronicle.registry.get('general-lunge') !== null, 'general-lunge not found');
+    });
+
+    test('general-hinge is registered', function() {
+      assert(Chronicle.registry.get('general-hinge') !== null, 'general-hinge not found');
+    });
+
     test('all exercises have required interface', function() {
       Chronicle.registry.keys().forEach(function(key) {
         const ex = Chronicle.registry.get(key);
@@ -91,6 +103,7 @@
       assertEqual(Chronicle.registry.get('deadlift').needsShoulder, true);
       assertEqual(Chronicle.registry.get('rdl').needsShoulder, true);
       assertEqual(Chronicle.registry.get('single-leg-rdl').needsShoulder, true);
+      assertEqual(Chronicle.registry.get('general-hinge').needsShoulder, true);
       assertEqual(Chronicle.registry.get('squat').needsShoulder, false);
       assertEqual(Chronicle.registry.get('hack-squat').needsShoulder, false);
     });
@@ -614,21 +627,21 @@
   // ========== EXERCISE CATEGORY CONSISTENCY ==========
   suite('Exercise Categories', function() {
     test('squat-type exercises are in squat category', function() {
-      ['squat', 'hack-squat', 'bulgarian-squat', 'split-squat'].forEach(function(key) {
+      ['squat', 'hack-squat', 'bulgarian-squat', 'split-squat', 'general-squat', 'general-lunge'].forEach(function(key) {
         assertEqual(Chronicle.registry.get(key).category, 'squat',
           `${key} should be in squat category`);
       });
     });
 
     test('hinge exercises are in deadlift category', function() {
-      ['deadlift', 'rdl', 'single-leg-rdl'].forEach(function(key) {
+      ['deadlift', 'rdl', 'single-leg-rdl', 'general-hinge'].forEach(function(key) {
         assertEqual(Chronicle.registry.get(key).category, 'deadlift',
           `${key} should be in deadlift category`);
       });
     });
 
     test('squat-type exercises have depthMarkers', function() {
-      ['squat', 'hack-squat', 'bulgarian-squat', 'split-squat'].forEach(function(key) {
+      ['squat', 'hack-squat', 'bulgarian-squat', 'split-squat', 'general-squat', 'general-lunge'].forEach(function(key) {
         const module = Chronicle.registry.get(key);
         assert(module.depthMarkers !== null && module.depthMarkers.length > 0,
           `${key} should have depth markers`);
@@ -636,22 +649,242 @@
     });
 
     test('hinge exercises have null depthMarkers', function() {
-      ['deadlift', 'rdl', 'single-leg-rdl'].forEach(function(key) {
+      ['deadlift', 'rdl', 'single-leg-rdl', 'general-hinge'].forEach(function(key) {
         const module = Chronicle.registry.get(key);
         assertEqual(module.depthMarkers, null, `${key} should have null depth markers`);
       });
     });
 
     test('hinge exercises need shoulder tracking', function() {
-      ['deadlift', 'rdl', 'single-leg-rdl'].forEach(function(key) {
+      ['deadlift', 'rdl', 'single-leg-rdl', 'general-hinge'].forEach(function(key) {
         assertEqual(Chronicle.registry.get(key).needsShoulder, true, `${key} should need shoulder`);
       });
     });
 
     test('squat-type exercises do not need shoulder', function() {
-      ['squat', 'hack-squat', 'bulgarian-squat', 'split-squat'].forEach(function(key) {
+      ['squat', 'hack-squat', 'bulgarian-squat', 'split-squat', 'general-squat', 'general-lunge'].forEach(function(key) {
         assertEqual(Chronicle.registry.get(key).needsShoulder, false, `${key} should not need shoulder`);
       });
+    });
+  });
+
+  // ========== REFERENCE DEPTH - SPEED SCORE NORMALIZATION ==========
+  suite('Speed Score Normalization - referenceDepth', function() {
+    test('all exercises have a referenceDepth', function() {
+      Chronicle.registry.keys().forEach(function(key) {
+        const ex = Chronicle.registry.get(key);
+        assert(typeof ex.referenceDepth === 'number', `${key} missing referenceDepth`);
+        assert(ex.referenceDepth > 0, `${key} referenceDepth should be positive`);
+      });
+    });
+
+    test('referenceDepth values are reasonable (2-20 inches)', function() {
+      Chronicle.registry.keys().forEach(function(key) {
+        const ex = Chronicle.registry.get(key);
+        assert(ex.referenceDepth >= 2, `${key} referenceDepth (${ex.referenceDepth}) too small`);
+        assert(ex.referenceDepth <= 20, `${key} referenceDepth (${ex.referenceDepth}) too large`);
+      });
+    });
+
+    test('squat-category exercises have larger referenceDepth than hinge-category', function() {
+      const squat = Chronicle.registry.get('squat');
+      const rdl = Chronicle.registry.get('rdl');
+      assert(squat.referenceDepth > rdl.referenceDepth,
+        `squat ref (${squat.referenceDepth}) should be > rdl ref (${rdl.referenceDepth})`);
+    });
+
+    test('general exercises match their closest specific exercise', function() {
+      const squat = Chronicle.registry.get('squat');
+      const genSquat = Chronicle.registry.get('general-squat');
+      assertEqual(genSquat.referenceDepth, squat.referenceDepth,
+        'general-squat should match squat referenceDepth');
+
+      const splitSquat = Chronicle.registry.get('split-squat');
+      const genLunge = Chronicle.registry.get('general-lunge');
+      assertEqual(genLunge.referenceDepth, splitSquat.referenceDepth,
+        'general-lunge should match split-squat referenceDepth');
+
+      const rdl = Chronicle.registry.get('rdl');
+      const genHinge = Chronicle.registry.get('general-hinge');
+      assertEqual(genHinge.referenceDepth, rdl.referenceDepth,
+        'general-hinge should match rdl referenceDepth');
+    });
+  });
+
+  // ========== GENERAL SQUAT ==========
+  suite('General Squat - Module', function() {
+    test('module properties', function() {
+      const module = Chronicle.registry.get('general-squat');
+      assertEqual(module.name, 'General Squat');
+      assertEqual(module.category, 'squat');
+      assertEqual(module.isSingleLeg, false);
+      assertEqual(module.needsShoulder, false);
+    });
+
+    test('has depth markers', function() {
+      const module = Chronicle.registry.get('general-squat');
+      assert(module.depthMarkers !== null, 'should have depth markers');
+      assert(module.depthMarkers.length >= 3, 'should have at least 3 markers');
+    });
+
+    test('calibrates successfully', function() {
+      mockTime(0);
+      const state = Chronicle.createState();
+      const module = Chronicle.registry.get('general-squat');
+      const ui = createMockUI();
+      const calibrated = calibrateState(state, module, ui);
+      assert(calibrated, 'should calibrate');
+    });
+
+    test('quality assessment works', function() {
+      const module = Chronicle.registry.get('general-squat');
+      assertEqual(module.getQuality(18).label, 'Deep');
+      assertEqual(module.getQuality(16).label, 'Parallel');
+      assertEqual(module.getQuality(10).label, 'Half');
+      assertEqual(module.getQuality(3).label, 'Shallow');
+    });
+
+    test('has more forgiving thresholds than back squat', function() {
+      const squat = Chronicle.registry.get('squat');
+      const gen = Chronicle.registry.get('general-squat');
+      assert(gen.hyperparams.MIN_DEPTH_INCHES <= squat.hyperparams.MIN_DEPTH_INCHES,
+        'general squat should have lower or equal min depth');
+    });
+  });
+
+  // ========== GENERAL LUNGE ==========
+  suite('General Lunge - Module', function() {
+    test('module properties', function() {
+      const module = Chronicle.registry.get('general-lunge');
+      assertEqual(module.name, 'General Lunge');
+      assertEqual(module.category, 'squat');
+      assertEqual(module.isSingleLeg, true);
+      assertEqual(module.needsShoulder, false);
+    });
+
+    test('has depth markers', function() {
+      const module = Chronicle.registry.get('general-lunge');
+      assert(module.depthMarkers !== null, 'should have depth markers');
+      assert(module.depthMarkers.length >= 3, 'should have at least 3 markers');
+    });
+
+    test('calibrates successfully', function() {
+      mockTime(0);
+      const state = Chronicle.createState();
+      const module = Chronicle.registry.get('general-lunge');
+      const ui = createMockUI();
+      const calibrated = calibrateState(state, module, ui);
+      assert(calibrated, 'should calibrate');
+    });
+
+    test('quality assessment works', function() {
+      const module = Chronicle.registry.get('general-lunge');
+      assertEqual(module.getQuality(16).label, 'Deep');
+      assertEqual(module.getQuality(12).label, 'Parallel');
+      assertEqual(module.getQuality(8).label, 'Half');
+      assertEqual(module.getQuality(2).label, 'Shallow');
+    });
+
+    test('reset clears side tracking', function() {
+      const state = Chronicle.createState();
+      state.workingSide = 'left';
+      state.sideReps = { left: 4, right: 3 };
+
+      const module = Chronicle.registry.get('general-lunge');
+      module.reset(state);
+
+      assertEqual(state.workingSide, null);
+      assertEqual(state.sideReps.left, 0);
+      assertEqual(state.sideReps.right, 0);
+    });
+  });
+
+  // ========== GENERAL HINGE ==========
+  suite('General Hinge - Module', function() {
+    test('module properties', function() {
+      const module = Chronicle.registry.get('general-hinge');
+      assertEqual(module.name, 'General Hinge');
+      assertEqual(module.category, 'deadlift');
+      assertEqual(module.isSingleLeg, false);
+      assertEqual(module.needsShoulder, true);
+    });
+
+    test('has null depth markers (hinge exercise)', function() {
+      const module = Chronicle.registry.get('general-hinge');
+      assertEqual(module.depthMarkers, null, 'hinge exercises should not have depth markers');
+    });
+
+    test('calibrates with torso angle', function() {
+      mockTime(0);
+      const state = Chronicle.createState();
+      const module = Chronicle.registry.get('general-hinge');
+      const ui = createMockUI();
+      const landmarks = createHingeLandmarks({ angleDeg: 5 });
+      const calibrated = calibrateState(state, module, ui, { landmarks: landmarks });
+      assert(calibrated, 'should calibrate');
+      assert(state.standingTorsoAngle !== null, 'standing torso angle should be set');
+    });
+
+    test('quality is based on hinge depth', function() {
+      const module = Chronicle.registry.get('general-hinge');
+      assertEqual(module.getQuality(75).label, 'Full Stretch');
+      assertEqual(module.getQuality(55).label, 'Parallel');
+      assertEqual(module.getQuality(35).label, 'Partial');
+      assertEqual(module.getQuality(20).label, 'Shallow');
+    });
+
+    test('has more forgiving thresholds than RDL', function() {
+      const rdl = Chronicle.registry.get('rdl');
+      const gen = Chronicle.registry.get('general-hinge');
+      assert(gen.hyperparams.HINGE_START_THRESHOLD <= rdl.hyperparams.HINGE_START_THRESHOLD,
+        'general hinge should have lower or equal start threshold');
+    });
+
+    test('reset clears hinge state', function() {
+      const state = Chronicle.createState();
+      state.standingTorsoAngle = 5;
+      state.deepestTorsoAngle = 60;
+      state.dlSmoothedAngle = 30;
+
+      const module = Chronicle.registry.get('general-hinge');
+      module.reset(state);
+
+      assertEqual(state.standingTorsoAngle, null);
+      assertEqual(state.deepestTorsoAngle, null);
+      assertEqual(state.dlSmoothedAngle, null);
+    });
+  });
+
+  // ========== GENERAL EXERCISE CATEGORY CONSISTENCY ==========
+  suite('General Exercise Categories', function() {
+    test('general-squat and general-lunge are in squat category', function() {
+      assertEqual(Chronicle.registry.get('general-squat').category, 'squat');
+      assertEqual(Chronicle.registry.get('general-lunge').category, 'squat');
+    });
+
+    test('general-hinge is in deadlift category', function() {
+      assertEqual(Chronicle.registry.get('general-hinge').category, 'deadlift');
+    });
+
+    test('general-squat and general-lunge have depth markers', function() {
+      assert(Chronicle.registry.get('general-squat').depthMarkers !== null);
+      assert(Chronicle.registry.get('general-lunge').depthMarkers !== null);
+    });
+
+    test('general-hinge has null depth markers', function() {
+      assertEqual(Chronicle.registry.get('general-hinge').depthMarkers, null);
+    });
+
+    test('general-hinge needs shoulder tracking', function() {
+      assertEqual(Chronicle.registry.get('general-hinge').needsShoulder, true);
+    });
+
+    test('general-lunge is single-leg', function() {
+      assertEqual(Chronicle.registry.get('general-lunge').isSingleLeg, true);
+    });
+
+    test('general-squat is bilateral', function() {
+      assertEqual(Chronicle.registry.get('general-squat').isSingleLeg, false);
     });
   });
 })();

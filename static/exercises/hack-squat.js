@@ -30,6 +30,7 @@
     category: 'squat',
     isSingleLeg: false,
     needsShoulder: false,
+    referenceDepth: 14,  // Typical parallel depth (inches) for hack squat
     hyperparams: HACK,
 
     depthMarkers: [
@@ -176,7 +177,7 @@
 
           if (recoveryPercent >= HACK.RECOVERY_PERCENT && isAboveThreshold && hasMinDepth) {
             const ascentTime = (performance.now() - state.ascentStartTime) / 1000;
-            const speedScore = utils.calculateSpeedScore(ascentTime, maxDepthInches);
+            const speedScore = utils.calculateSpeedScore(ascentTime, maxDepthInches, this.referenceDepth);
             const quality = this.getQuality(maxDepthInches);
 
             state.repTimes.push(ascentTime);
@@ -209,7 +210,8 @@
 
       const firstRepTime = state.repTimes[0];
       const firstRepDepth = state.repDepths[0];
-      const firstSpeedScore = utils.calculateSpeedScore(firstRepTime, firstRepDepth);
+      const refDepth = this.referenceDepth;
+      const firstSpeedScore = utils.calculateSpeedScore(firstRepTime, firstRepDepth, refDepth);
 
       let html = '<div style="margin-bottom: 10px; font-weight: bold;">Hack Squat Speed Analysis</div>';
 
@@ -220,7 +222,7 @@
         const actualRepNum = state.repTimes.length - recentReps.length + idx + 1;
         const depthInches = recentDepths[idx];
         const quality = this.getQuality(depthInches);
-        const speedScore = utils.calculateSpeedScore(time, depthInches);
+        const speedScore = utils.calculateSpeedScore(time, depthInches, refDepth);
         const scoreDrop = ((firstSpeedScore - speedScore) / firstSpeedScore * 100).toFixed(1);
         const dropNum = parseFloat(scoreDrop);
 

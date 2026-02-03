@@ -43,6 +43,7 @@
     category: 'deadlift',
     isSingleLeg: false,
     needsShoulder: true,
+    referenceDepth: 12,  // Typical hip rise in inches for conventional deadlift
     hyperparams: DL,
     depthMarkers: null,
 
@@ -197,7 +198,7 @@
             const liftTime = (performance.now() - state.liftStartTime) / 1000;
             const romDegrees = totalROM;
             const distanceForSpeed = Math.max(hipRiseInches, 1);
-            const speedScore = utils.calculateSpeedScore(liftTime, distanceForSpeed);
+            const speedScore = utils.calculateSpeedScore(liftTime, distanceForSpeed, this.referenceDepth);
             const quality = this.getQuality(lockoutAngleDiff);
 
             state.repCount++;
@@ -256,7 +257,7 @@
         html += `<div style="margin: 5px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">
           <div style="font-size: 16px; margin-bottom: 4px;">
             Rep ${actualRepNum}: ${time.toFixed(2)}s | ${romDeg.toFixed(0)}deg ROM
-            <span style="color: ${color}; margin-left: 10px; font-weight: bold;">${dropNum > 0 ? '+' : ''}${dropNum.toFixed(1)}%</span>
+            <span style="color: ${color}; margin-left: 10px; font-weight: bold;">${dropNum > 0 ? '+' : '-'}${Math.abs(dropNum).toFixed(1)}%</span>
           </div>
         </div>`;
       });

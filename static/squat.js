@@ -125,8 +125,8 @@ resetBtn.addEventListener('click', () => {
 });
 
 // ========== SPEED SCORE & QUALITY (kept for backward compat) ==========
-function calculateSpeedScore(timeSeconds, depthInches) {
-  return Chronicle.utils.calculateSpeedScore(timeSeconds, depthInches);
+function calculateSpeedScore(timeSeconds, depthInches, referenceDepth) {
+  return Chronicle.utils.calculateSpeedScore(timeSeconds, depthInches, referenceDepth);
 }
 
 // ========== POSE DRAWING ==========
