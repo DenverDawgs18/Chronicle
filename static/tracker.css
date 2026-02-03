@@ -53,6 +53,43 @@ body {
   border: 1px solid rgba(167, 139, 250, 0.3);
 }
 
+/* Exercise Selector */
+.exercise-selector {
+  display: flex;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.exercise-option {
+  background: transparent !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 5px 14px !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: none !important;
+  min-width: auto;
+}
+
+.exercise-option:hover {
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.08) !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.exercise-option.active {
+  background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%) !important;
+  color: #fff;
+  font-weight: 600 !important;
+}
+
 .program-indicator {
   background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
   color: white;
@@ -348,6 +385,11 @@ body {
       .set-counter {
         font-size: 12px;
         padding: 4px 10px;
+      }
+
+      .exercise-option {
+        font-size: 11px !important;
+        padding: 4px 10px !important;
       }
 
       video, canvas {

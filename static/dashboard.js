@@ -181,6 +181,9 @@ function renderCurrentSets() {
     return;
   }
 
+  const isDeadlift = currentWorkout.exercise_type === 'deadlift';
+  const depthLabel = isDeadlift ? 'Hip Rise' : 'Avg Depth';
+
   currentSetsEl.innerHTML = currentWorkout.sets.map(set => `
     <div class="set-card" data-set-id="${set.id}">
       <div class="set-number">${set.set_number}</div>
@@ -192,7 +195,7 @@ function renderCurrentSets() {
         ${set.avg_depth ? `
           <div class="set-metric">
             <span class="metric-value">${set.avg_depth}"</span>
-            <span class="metric-label">Avg Depth</span>
+            <span class="metric-label">${depthLabel}</span>
           </div>
         ` : ''}
         ${set.avg_velocity ? `
@@ -235,7 +238,7 @@ async function createNewWorkout() {
 
   const data = await api('/api/workouts', {
     method: 'POST',
-    body: JSON.stringify({ name: 'Squat Session' })
+    body: JSON.stringify({ name: 'Workout Session' })
   });
 
   if (data.success) {
@@ -325,7 +328,10 @@ function renderWorkoutHistory(append = false) {
     return;
   }
 
-  const html = historyWorkouts.map(workout => `
+  const html = historyWorkouts.map(workout => {
+    const isDL = workout.exercise_type === 'deadlift';
+    const dLabel = isDL ? 'Hip Rise' : 'Depth';
+    return `
     <div class="history-card glass-card" data-workout-id="${workout.id}" onclick="toggleWorkoutDetails(${workout.id})">
       <div class="history-header">
         <div class="history-info">
@@ -369,7 +375,7 @@ function renderWorkoutHistory(append = false) {
                 ${set.avg_depth ? `
                   <div class="set-metric">
                     <span class="metric-value">${set.avg_depth}"</span>
-                    <span class="metric-label">Depth</span>
+                    <span class="metric-label">${dLabel}</span>
                   </div>
                 ` : ''}
                 ${set.avg_velocity ? `
@@ -384,7 +390,7 @@ function renderWorkoutHistory(append = false) {
         </div>
       </div>
     </div>
-  `).join('');
+  `}).join('');
 
   if (append) {
     workoutHistoryEl.insertAdjacentHTML('beforeend', html);
