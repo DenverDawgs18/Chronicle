@@ -27,6 +27,11 @@
       <button class="exercise-option {{ 'active' if exercise_type == 'rdl' else '' }}" data-exercise="rdl" onclick="setExercise('rdl')">RDL</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'single-leg-rdl' else '' }}" data-exercise="single-leg-rdl" onclick="setExercise('single-leg-rdl')">SL-RDL</button>
     </div>
+    <div class="exercise-selector-group exercise-selector-general">
+      <button class="exercise-option {{ 'active' if exercise_type == 'general-squat' else '' }}" data-exercise="general-squat" onclick="setExercise('general-squat')" title="Front squat, goblet squat, leg press, etc.">Squat+</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'general-lunge' else '' }}" data-exercise="general-lunge" onclick="setExercise('general-lunge')" title="Lunges, step-ups, lateral lunges, etc.">Lunge+</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'general-hinge' else '' }}" data-exercise="general-hinge" onclick="setExercise('general-hinge')" title="Good mornings, KB swings, pull-throughs, etc.">Hinge+</button>
+    </div>
   </div>
   <span id="setCounter" class="set-counter">Set 1</span>
   <span id="programExerciseIndicator" class="program-indicator hidden"></span>
@@ -90,6 +95,9 @@
   <script src="{{ url_for('static', filename='exercises/hack-squat.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/bulgarian-squat.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/split-squat.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/general-squat.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/general-lunge.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/general-hinge.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/registry.js') }}"></script>
   <script src="{{ url_for('static', filename='squat.js') }}"></script>
 </body>

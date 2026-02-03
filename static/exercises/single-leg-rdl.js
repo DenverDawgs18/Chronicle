@@ -34,6 +34,7 @@
     category: 'deadlift',
     isSingleLeg: true,
     needsShoulder: true,
+    referenceDepth: 6,   // Typical hip rise in inches for single-leg RDL
     hyperparams: SLRDL,
     depthMarkers: null,
 
@@ -194,7 +195,7 @@
             const hipRise = state.deepestHipY ? state.deepestHipY - hipY : 0;
             const hipRiseInches = utils.normToInches(hipRise, state);
             const distanceForSpeed = Math.max(hipRiseInches, 1);
-            const speedScore = utils.calculateSpeedScore(repTime, distanceForSpeed);
+            const speedScore = utils.calculateSpeedScore(repTime, distanceForSpeed, this.referenceDepth);
             const repQuality = this.getQuality(romDegrees);
 
             state.repCount++;

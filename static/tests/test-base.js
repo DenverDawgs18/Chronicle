@@ -97,6 +97,45 @@
       const slow = Chronicle.utils.calculateSpeedScore(2.0, 15);
       assert(fast > slow, `fast (${fast}) should be > slow (${slow})`);
     });
+
+    test('no referenceDepth gives backward-compatible result', function() {
+      // Without referenceDepth, should behave exactly as before
+      const score = Chronicle.utils.calculateSpeedScore(1.0, 15);
+      assertEqual(score, 15000);
+    });
+
+    test('referenceDepth equal to standard produces same result', function() {
+      // referenceDepth == STANDARD_REFERENCE_DEPTH (15) should be identity
+      const score = Chronicle.utils.calculateSpeedScore(1.0, 15, 15);
+      assertEqual(score, 15000);
+    });
+
+    test('smaller referenceDepth scales score up', function() {
+      // RDL with 8" reference: 8" depth at 1.0s should equal squat 15" depth at 1.0s
+      const rdlScore = Chronicle.utils.calculateSpeedScore(1.0, 8, 8);
+      const squatScore = Chronicle.utils.calculateSpeedScore(1.0, 15, 15);
+      assertEqual(rdlScore, squatScore, 'same speed effort should produce same score');
+    });
+
+    test('normalization makes exercises comparable', function() {
+      // A fast squat and a fast RDL at the reference depth should score the same
+      const squatScore = Chronicle.utils.calculateSpeedScore(0.7, 15, 15);
+      const deadliftScore = Chronicle.utils.calculateSpeedScore(0.7, 12, 12);
+      const rdlScore = Chronicle.utils.calculateSpeedScore(0.7, 8, 8);
+      const slrdlScore = Chronicle.utils.calculateSpeedScore(0.7, 6, 6);
+
+      // All should be equal since each exercise is at its reference depth
+      assertEqual(squatScore, deadliftScore, 'squat and deadlift at ref depths should match');
+      assertEqual(squatScore, rdlScore, 'squat and RDL at ref depths should match');
+      assertEqual(squatScore, slrdlScore, 'squat and SL-RDL at ref depths should match');
+    });
+
+    test('deeper rep still scores higher within same exercise', function() {
+      // Going deeper than reference should still give a higher score
+      const normalDepth = Chronicle.utils.calculateSpeedScore(1.0, 15, 15);
+      const deeperRep = Chronicle.utils.calculateSpeedScore(1.0, 18, 15);
+      assert(deeperRep > normalDepth, `deeper (${deeperRep}) should be > normal (${normalDepth})`);
+    });
   });
 
   suite('Chronicle.utils - Torso Angle', function() {
