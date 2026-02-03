@@ -440,7 +440,13 @@ def subscribe():
 def tracker():
     if not current_user.subscribed:
         return redirect(url_for('subscribe'))
-    return render_template('tracker.html', height=current_user.height)
+    exercise_type = request.args.get('exercise', 'squat')
+    if exercise_type not in ('squat', 'deadlift'):
+        exercise_type = 'squat'
+    exercise_names = {'squat': 'Squat', 'deadlift': 'Deadlift'}
+    return render_template('tracker.html', height=current_user.height,
+                         exercise_type=exercise_type,
+                         exercise_name=exercise_names[exercise_type])
 
 @app.route("/set_height", methods= ['POST'])
 @login_required

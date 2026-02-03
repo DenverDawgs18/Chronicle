@@ -45,6 +45,17 @@ const OUTLIER_THRESHOLD_MULTIPLIER = 6.0;  // Only reject extreme spikes, not sq
 const MIN_FRAMES_FOR_OUTLIER_DETECTION = 10;  // Need more data before rejecting frames
 const VELOCITY_EMA_ALPHA = 0.4;  // Exponential moving average for velocity
 
+// ========== DEADLIFT HYPERPARAMETERS ==========
+// Torso angle thresholds (degrees from vertical)
+const DL_SETUP_ANGLE_THRESHOLD = 25;      // Torso must lean this far to detect setup
+const DL_LOCKOUT_ANGLE_THRESHOLD = 12;    // Must be within this of standing angle for lockout
+const DL_MIN_ROM_DEGREES = 15;            // Minimum torso angle change for a valid rep
+const DL_LIFT_VELOCITY_THRESHOLD = 0.003; // Torso angle rate of change to detect lift start
+const DL_MIN_STANDING_TIME_MS = 400;      // Short pause for touch-and-go support
+const DL_MAX_LIFT_TIME_MS = 8000;         // Max time for a single pull
+const DL_MIN_SETUP_TIME_MS = 300;         // Must be in setup position briefly before pull counts
+// ======================================================================
+
 // DEBUG MODE
 const DEBUG_MODE = true;
 // ======================================================================
@@ -110,6 +121,20 @@ let smoothedVelocity = 0;  // EMA-smoothed velocity
 
 let debugInfo = {};
 
+// Exercise mode
+let currentExercise = 'squat'; // 'squat' or 'deadlift'
+let exerciseConfig = null; // Initialized after function definitions
+
+// Deadlift-specific state
+let standingTorsoAngle = null;  // Calibrated torso angle when standing upright
+let setupTorsoAngle = null;     // Torso angle at deepest setup position
+let deepestTorsoAngle = null;   // Max torso lean during current rep
+let liftStartTime = null;       // When the pull began
+let setupEnteredTime = null;    // When user first reached setup position
+let dlSmoothedAngle = null;     // EMA-smoothed torso angle
+let dlAngleVelocity = 0;        // Rate of torso angle change (degrees/frame)
+let prevTorsoAngle = null;      // Previous frame's torso angle
+
 function getUserHeightInches() {
   return parseInt(document.getElementById('heightSlider').value);
 }
@@ -160,7 +185,7 @@ resetBtn.addEventListener('click', () => {
     typicalMovementMagnitude = 0.01;
     feedbackEl.textContent = 'Counter reset! Stand sideways and stay still';
   } else {
-    feedbackEl.textContent = 'Counter reset! Calibration kept - ready to squat';
+    feedbackEl.textContent = `Counter reset! Calibration kept - ready to ${exerciseConfig.name.toLowerCase()}`;
   }
 
   counterEl.textContent = 'Reps: 0';
@@ -194,6 +219,40 @@ function getDepthQuality(depthInches) {
   if (depthInches >= DEPTH_MARKER_PARALLEL) return { emoji: '✓', label: 'Parallel', color: '#90EE90' };
   if (depthInches >= DEPTH_MARKER_HALF) return { emoji: '~', label: 'Half', color: '#FFD700' };
   return { emoji: '⚠', label: 'Shallow', color: '#FFA500' };
+}
+
+function getLockoutQuality(angleDiffFromStanding) {
+  if (angleDiffFromStanding <= 5) return { emoji: '🏆', label: 'Full Lockout', color: '#00FF00' };
+  if (angleDiffFromStanding <= 10) return { emoji: '✓', label: 'Lockout', color: '#90EE90' };
+  if (angleDiffFromStanding <= 20) return { emoji: '~', label: 'Partial', color: '#FFD700' };
+  return { emoji: '⚠', label: 'Soft Lockout', color: '#FFA500' };
+}
+
+function getExerciseConfig() {
+  if (currentExercise === 'deadlift') {
+    return {
+      name: 'Deadlift',
+      sessionName: 'Deadlift Session',
+      readyMsg: 'Ready to deadlift!',
+    };
+  }
+  return {
+    name: 'Squat',
+    minDepth: MIN_DEPTH_INCHES,
+    descentThreshold: DESCENT_THRESHOLD_INCHES,
+    recoveryPercent: RECOVERY_PERCENT,
+    descentVelocityMin: DESCENT_VELOCITY_MIN,
+    minStandingTime: MIN_STANDING_TIME_MS,
+    getDepthQuality: getDepthQuality,
+    sessionName: 'Squat Session',
+    readyMsg: 'Ready to squat!',
+    ascendingVerb: 'Drive up',
+    depthMarkers: [
+      { inches: DEPTH_MARKER_HALF, color: 'rgba(255, 165, 0, 0.4)' },
+      { inches: DEPTH_MARKER_PARALLEL, color: 'rgba(255, 255, 0, 0.4)' },
+      { inches: DEPTH_MARKER_DEEP, color: 'rgba(0, 255, 0, 0.4)' }
+    ]
+  };
 }
 
 /**
@@ -291,7 +350,7 @@ function displayRepTimes() {
   recentReps.forEach((time, idx) => {
     const actualRepNum = repTimes.length - recentReps.length + idx + 1;
     const depthInches = recentDepths[idx];
-    const quality = getDepthQuality(depthInches);
+    const quality = exerciseConfig.getDepthQuality(depthInches);
     
     const speedScore = calculateSpeedScore(time, depthInches);
     const scoreDrop = ((firstSpeedScore - speedScore) / firstSpeedScore * 100).toFixed(1);
@@ -313,6 +372,7 @@ function displayRepTimes() {
 }
 
 function detectSquat(landmarks) {
+  const cfg = exerciseConfig;
   const leftHip = landmarks[23];
   const rightHip = landmarks[24];
   const leftKnee = landmarks[25];
@@ -490,7 +550,7 @@ function detectSquat(landmarks) {
         
         setTimeout(() => {
           if (state === 'standing') {
-            feedbackEl.textContent = "Ready to squat!";
+            feedbackEl.textContent = cfg.readyMsg;
           }
         }, 2000);
       }
@@ -544,7 +604,7 @@ function detectSquat(landmarks) {
     const horizontalMovement = standingHipX ? Math.abs(hipX - standingHipX) : 0;
     const toleranceNorm = inchesToNorm(BASELINE_TOLERANCE_INCHES);
     const currentDepthNorm = hipY - standingHipY;
-    const descentThresholdNorm = inchesToNorm(DESCENT_THRESHOLD_INCHES);
+    const descentThresholdNorm = inchesToNorm(cfg.descentThreshold);
     
     // Check if this looks like a squat start (vertical movement) vs horizontal drift (reracking)
     const isVerticalMovement = distanceFromBaseline > horizontalMovement * 1.5;
@@ -586,7 +646,7 @@ function detectSquat(landmarks) {
               stableStandingStartTime = performance.now();
               rebaselineStabilityCount = 0;
               potentialNewBaseline = null;
-              feedbackEl.textContent = `✓ Position updated - ready to squat`;
+              feedbackEl.textContent = `✓ Position updated - ready to ${cfg.name.toLowerCase()}`;
             } else {
               feedbackEl.textContent = `Detecting new position... ${rebaselineStabilityCount}/${REBASELINE_STABILITY_FRAMES}`;
             }
@@ -620,21 +680,21 @@ function detectSquat(landmarks) {
   // ========== DEPTH CALCULATIONS ==========
   const currentDepthNorm = hipY - standingHipY;
   const currentDepthInches = normToInches(currentDepthNorm);
-  
+
   const maxDepthNorm = deepestHipY ? deepestHipY - standingHipY : 0;
   const maxDepthInches = normToInches(maxDepthNorm);
-  
-  const descentThresholdNorm = inchesToNorm(DESCENT_THRESHOLD_INCHES);
-  const minDepthNorm = inchesToNorm(MIN_DEPTH_INCHES);
+
+  const descentThresholdNorm = inchesToNorm(cfg.descentThreshold);
+  const minDepthNorm = inchesToNorm(cfg.minDepth);
   const hysteresisNorm = inchesToNorm(HYSTERESIS_INCHES);
   
   // ========== STATE MACHINE ==========
   switch (state) {
     case 'standing':
-      const hasBeenStable = stableStandingStartTime && 
-        (performance.now() - stableStandingStartTime) >= MIN_STANDING_TIME_MS;
-      
-      const isMovingDown = avgVelocity > DESCENT_VELOCITY_MIN;
+      const hasBeenStable = stableStandingStartTime &&
+        (performance.now() - stableStandingStartTime) >= cfg.minStandingTime;
+
+      const isMovingDown = avgVelocity > cfg.descentVelocityMin;
       const wellPastThreshold = currentDepthNorm > descentThresholdNorm * DEPTH_TRIGGER_MULTIPLIER;
       const isPastThreshold = currentDepthNorm > descentThresholdNorm + hysteresisNorm;
       
@@ -648,8 +708,8 @@ function detectSquat(landmarks) {
         potentialNewBaseline = null;
         lastSquatStartTime = performance.now();
         
-        const quality = getDepthQuality(currentDepthInches);
-        feedbackEl.textContent = `⬇ Descending... ${quality.emoji}`;
+        const quality = cfg.getDepthQuality(currentDepthInches);
+        feedbackEl.textContent = `⬇ ${cfg.name}... ${quality.emoji}`;
       } else if (isPastThreshold && !hasBeenStable && stableStandingStartTime) {
         const timeUntilReady = Math.ceil((MIN_STANDING_TIME_MS - 
           (performance.now() - stableStandingStartTime)) / 1000);
@@ -660,20 +720,20 @@ function detectSquat(landmarks) {
       break;
       
     case 'descending':
-      const descendQuality = getDepthQuality(currentDepthInches);
+      const descendQuality = cfg.getDepthQuality(currentDepthInches);
       feedbackEl.textContent = `⬇ ${currentDepthInches.toFixed(1)}" ${descendQuality.emoji} ${descendQuality.label}`;
-      
+
       if (velocityHistory.length >= VELOCITY_WINDOW && avgVelocity < -VELOCITY_THRESHOLD) {
-        if (maxDepthInches >= MIN_DEPTH_INCHES) {
+        if (maxDepthInches >= cfg.minDepth) {
           updateStatus('ascending');
           ascentStartTime = performance.now();
           velocityHistory = [];
           smoothedVelocity = 0;
-          
-          const quality = getDepthQuality(maxDepthInches);
-          feedbackEl.textContent = `⬆ Drive up! ${quality.emoji} ${quality.label}`;
+
+          const quality = cfg.getDepthQuality(maxDepthInches);
+          feedbackEl.textContent = `⬆ ${cfg.ascendingVerb}! ${quality.emoji} ${quality.label}`;
         } else {
-          feedbackEl.textContent = `⚠ Too shallow! Need at least ${MIN_DEPTH_INCHES}"`;
+          feedbackEl.textContent = `⚠ Too shallow! Need at least ${cfg.minDepth}"`;
           resetToStanding();
         }
       }
@@ -696,16 +756,16 @@ function detectSquat(landmarks) {
       }
       
       const isAboveThreshold = currentDepthNorm < descentThresholdNorm - hysteresisNorm;
-      const hasMinDepth = maxDepthInches >= MIN_DEPTH_INCHES;
-      
-      if (recoveryPercent >= RECOVERY_PERCENT && isAboveThreshold && hasMinDepth) {
+      const hasMinDepth = maxDepthInches >= cfg.minDepth;
+
+      if (recoveryPercent >= cfg.recoveryPercent && isAboveThreshold && hasMinDepth) {
         const ascentTime = (performance.now() - ascentStartTime) / 1000;
         repTimes.push(ascentTime);
         repDepths.push(maxDepthInches);
         repCount++;
 
         const speedScore = calculateSpeedScore(ascentTime, maxDepthInches);
-        const quality = getDepthQuality(maxDepthInches);
+        const quality = cfg.getDepthQuality(maxDepthInches);
 
         // Record rep for workout tracking
         recordRep(ascentTime, maxDepthInches, speedScore, quality.label.toLowerCase());
@@ -724,6 +784,384 @@ function detectSquat(landmarks) {
       }
       break;
   }
+}
+
+// ========== DEADLIFT DETECTION ==========
+
+/**
+ * Calculate torso angle from vertical using shoulder and hip positions.
+ * Returns degrees: 0 = upright, 90 = horizontal.
+ * Uses X positions for forward lean detection (side view camera).
+ */
+function calculateTorsoAngle(shoulderX, shoulderY, hipX, hipY) {
+  const dy = hipY - shoulderY; // Positive when shoulder above hip (normal)
+  if (dy <= 0.01) return 90;   // Shoulder at/below hip = extreme lean
+  const dx = Math.abs(shoulderX - hipX);
+  return Math.atan2(dx, dy) * (180 / Math.PI);
+}
+
+/**
+ * Deadlift detection using torso angle (shoulder-hip relationship).
+ *
+ * State machine: standing → setup (bent to bar) → lifting (pull) → rep counted → standing
+ *
+ * Key differences from squat:
+ * - Tracks torso angle (hip hinge) as primary metric, not just hip Y
+ * - Setup = bent over at bar (high torso angle)
+ * - Lift = concentric pull from setup to lockout
+ * - Rep counted when lockout achieved (torso returns to near-vertical)
+ * - Quality based on lockout position, not squat depth
+ */
+function detectDeadlift(landmarks) {
+  const leftShoulder = landmarks[11];
+  const rightShoulder = landmarks[12];
+  const leftHip = landmarks[23];
+  const rightHip = landmarks[24];
+  const leftKnee = landmarks[25];
+  const rightKnee = landmarks[26];
+
+  if (DEBUG_MODE) {
+    debugInfo = {
+      leftHip: leftHip ? { x: leftHip.x.toFixed(3), y: leftHip.y.toFixed(3), vis: (leftHip.visibility || 0).toFixed(2) } : null,
+      rightHip: rightHip ? { x: rightHip.x.toFixed(3), y: rightHip.y.toFixed(3), vis: (rightHip.visibility || 0).toFixed(2) } : null,
+      leftKnee: leftKnee ? { x: leftKnee.x.toFixed(3), y: leftKnee.y.toFixed(3), vis: (leftKnee.visibility || 0).toFixed(2) } : null,
+      rightKnee: rightKnee ? { x: rightKnee.x.toFixed(3), y: rightKnee.y.toFixed(3), vis: (rightKnee.visibility || 0).toFixed(2) } : null,
+      leftAnkle: null,
+      rightAnkle: null,
+      lockedSide: lockedSide,
+      currentSide: currentSide
+    };
+  }
+
+  // Validate hip + knee + shoulder visibility
+  const leftHipValid = leftHip && (leftHip.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
+  const rightHipValid = rightHip && (rightHip.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
+  const leftKneeValid = leftKnee && (leftKnee.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
+  const rightKneeValid = rightKnee && (rightKnee.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
+  const leftShoulderValid = leftShoulder && (leftShoulder.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
+  const rightShoulderValid = rightShoulder && (rightShoulder.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
+
+  const leftValid = leftHipValid && leftKneeValid && leftShoulderValid;
+  const rightValid = rightHipValid && rightKneeValid && rightShoulderValid;
+
+  if (!leftValid && !rightValid) {
+    trackingLossFrames++;
+    if (state !== 'standing' && trackingLossFrames > TRACKING_LOSS_TOLERANCE_FRAMES) {
+      feedbackEl.textContent = "Lost tracking - resetting";
+      resetDeadliftState();
+    }
+    return;
+  }
+  trackingLossFrames = 0;
+
+  // Side detection (reuse squat logic)
+  if (lockedSide === null) {
+    const leftKneeVis = leftKnee ? (leftKnee.visibility || 0) : 0;
+    const rightKneeVis = rightKnee ? (rightKnee.visibility || 0) : 0;
+    if (leftValid && rightValid) {
+      lockedSide = leftKneeVis > rightKneeVis ? 'left' : 'right';
+    } else if (leftValid) {
+      lockedSide = 'left';
+    } else {
+      lockedSide = 'right';
+    }
+  } else {
+    const currentValid = (lockedSide === 'left') ? leftValid : rightValid;
+    const otherValid = (lockedSide === 'left') ? rightValid : leftValid;
+    const currentKneeVis = (lockedSide === 'left') ? (leftKnee.visibility || 0) : (rightKnee.visibility || 0);
+    const otherKneeVis = (lockedSide === 'left') ? (rightKnee.visibility || 0) : (leftKnee.visibility || 0);
+
+    if (!currentValid && otherValid && (otherKneeVis - currentKneeVis > SIDE_LOCK_CONFIDENCE_THRESHOLD) && state === 'standing') {
+      lockedSide = lockedSide === 'left' ? 'right' : 'left';
+      feedbackEl.textContent = `Switched to ${lockedSide} side view`;
+    }
+  }
+
+  const useLeft = (lockedSide === 'left');
+  currentSide = lockedSide;
+
+  const shoulder = useLeft ? leftShoulder : rightShoulder;
+  const hip = useLeft ? leftHip : rightHip;
+  const knee = useLeft ? leftKnee : rightKnee;
+
+  const rawHipY = hip.y;
+  const rawHipX = hip.x;
+  const kneeY = knee.y;
+
+  // Position smoothing (reuse squat infrastructure)
+  const processed = processHipPosition(rawHipY, rawHipX);
+  if (processed.rejected && processed.hipY === null) return;
+  const hipY = processed.hipY;
+  const hipX = processed.hipX;
+
+  // Calculate torso angle
+  const rawAngle = calculateTorsoAngle(shoulder.x, shoulder.y, hip.x, hip.y);
+  // Smooth the torso angle
+  if (dlSmoothedAngle === null) {
+    dlSmoothedAngle = rawAngle;
+  } else {
+    dlSmoothedAngle = dlSmoothedAngle * 0.6 + rawAngle * 0.4;
+  }
+  const torsoAngle = dlSmoothedAngle;
+
+  // Angle velocity (rate of change)
+  if (prevTorsoAngle !== null) {
+    dlAngleVelocity = dlAngleVelocity * 0.6 + (torsoAngle - prevTorsoAngle) * 0.4;
+  }
+  prevTorsoAngle = torsoAngle;
+
+  // Hip velocity (reuse squat tracking)
+  if (prevHipY !== null) {
+    const instantVelocity = hipY - prevHipY;
+    velocityHistory.push(instantVelocity);
+    if (velocityHistory.length > VELOCITY_WINDOW) velocityHistory.shift();
+    updateSmoothedVelocity(instantVelocity);
+  }
+  prevHipY = hipY;
+
+  const avgVelocity = velocityHistory.length >= VELOCITY_WINDOW ? smoothedVelocity : 0;
+
+  // ========== CALIBRATION (same as squat + record torso angle) ==========
+  if (!isCalibrated && state === 'standing') {
+    const currentHipKneeDist = Math.abs(kneeY - hipY);
+
+    if (currentHipKneeDist < 0.05 || currentHipKneeDist > 0.5) {
+      feedbackEl.textContent = "Position yourself so full body is visible";
+      return;
+    }
+
+    if (calibrationHipYValues.length === 0) {
+      calibrationHipYValues.push(hipY);
+      hipKneeDistance = currentHipKneeDist;
+      standingHipX = hipX;
+      userHeightInches = getUserHeightInches();
+      feedbackEl.textContent = "Hold still for calibration... 1/" + CALIBRATION_SAMPLES;
+      return;
+    }
+
+    const recentAvg = calibrationHipYValues.slice(-3).reduce((a, b) => a + b, 0) /
+                      Math.min(calibrationHipYValues.length, 3);
+    const variation = Math.abs(hipY - recentAvg);
+    const tolerance = currentHipKneeDist * CALIBRATION_TOLERANCE_MULTIPLIER;
+
+    if (variation < tolerance) {
+      calibrationHipYValues.push(hipY);
+      hipKneeDistance = hipKneeDistance * (1 - BASELINE_UPDATE_ALPHA) + currentHipKneeDist * BASELINE_UPDATE_ALPHA;
+      feedbackEl.textContent = `Hold still... ${calibrationHipYValues.length}/${CALIBRATION_SAMPLES}`;
+
+      if (calibrationHipYValues.length >= CALIBRATION_SAMPLES) {
+        standingHipY = calibrationHipYValues.reduce((a, b) => a + b, 0) / calibrationHipYValues.length;
+        standingHipX = hipX;
+        standingTorsoAngle = torsoAngle; // Record standing torso angle for deadlift
+        stableFrameCount = STABILITY_FRAMES;
+        stableStandingStartTime = performance.now();
+        calibrationCompletedTime = performance.now();
+
+        const expectedHipKneeInches = userHeightInches * HIP_KNEE_RATIO;
+        inchesPerUnit = expectedHipKneeInches / hipKneeDistance;
+        isCalibrated = true;
+
+        const estimatedHipKneeInches = normToInches(hipKneeDistance);
+        const feet = Math.floor(userHeightInches / 12);
+        const inches = userHeightInches % 12;
+
+        feedbackEl.textContent = `✓ Calibrated! H:${feet}'${inches}" | Torso: ${torsoAngle.toFixed(0)}°`;
+        setTimeout(() => {
+          if (state === 'standing') {
+            feedbackEl.textContent = "Bend to the bar to begin";
+          }
+        }, 2000);
+      }
+    } else {
+      calibrationHipYValues = [];
+      feedbackEl.textContent = "Too much movement - restarting calibration";
+    }
+    return;
+  }
+
+  // Auto-recalibration if idle
+  if (isCalibrated && calibrationCompletedTime && state === 'standing' && lastSquatStartTime === null) {
+    const timeSinceCalibration = performance.now() - calibrationCompletedTime;
+    if (timeSinceCalibration > RECALIBRATION_TIMEOUT_MS) {
+      isCalibrated = false;
+      calibrationHipYValues = [];
+      standingHipY = null;
+      standingHipX = null;
+      standingTorsoAngle = null;
+      stableFrameCount = 0;
+      calibrationCompletedTime = null;
+      feedbackEl.textContent = "Auto-recalibrating - stay still";
+      return;
+    }
+  }
+
+  // State timeout
+  if (state === 'ascending' && liftStartTime) {
+    if (performance.now() - liftStartTime > DL_MAX_LIFT_TIME_MS) {
+      feedbackEl.textContent = "Pull timed out - resetting";
+      resetDeadliftState();
+      return;
+    }
+  }
+
+  // ========== DEADLIFT STATE MACHINE ==========
+  const angleFromStanding = standingTorsoAngle !== null ? torsoAngle - standingTorsoAngle : 0;
+  const hipDepthNorm = hipY - standingHipY;
+  const hipDepthInches = normToInches(hipDepthNorm);
+
+  if (DEBUG_MODE) {
+    debugInfo.torsoAngle = torsoAngle.toFixed(1);
+    debugInfo.standingTorsoAngle = standingTorsoAngle ? standingTorsoAngle.toFixed(1) : '-';
+    debugInfo.angleFromStanding = angleFromStanding.toFixed(1);
+    debugInfo.dlState = state;
+    debugInfo.angleVelocity = dlAngleVelocity.toFixed(3);
+  }
+
+  switch (state) {
+    case 'standing':
+      // Detect setup: user bends to the bar (torso angle increases significantly)
+      if (angleFromStanding > DL_SETUP_ANGLE_THRESHOLD) {
+        updateStatus('descending'); // "descending" = bending to bar / in setup position
+        deepestTorsoAngle = torsoAngle;
+        setupTorsoAngle = torsoAngle;
+        setupEnteredTime = performance.now();
+        lastSquatStartTime = performance.now();
+        feedbackEl.textContent = `⬇ Setup... ${angleFromStanding.toFixed(0)}° hinge`;
+      } else if (angleFromStanding > 10) {
+        feedbackEl.textContent = `Hinging... ${angleFromStanding.toFixed(0)}° (need ${DL_SETUP_ANGLE_THRESHOLD}°)`;
+      }
+      break;
+
+    case 'descending': // User is at the bar / still hinging down / or lowering for next rep
+      // Track deepest torso lean
+      if (torsoAngle > deepestTorsoAngle) {
+        deepestTorsoAngle = torsoAngle;
+        setupTorsoAngle = torsoAngle;
+      }
+
+      // Show current hinge angle
+      feedbackEl.textContent = `⬇ Setup ${angleFromStanding.toFixed(0)}° hinge`;
+
+      // Detect lift start: torso angle starts DECREASING (pulling up) and hip moving up
+      const hasBeenInSetup = setupEnteredTime && (performance.now() - setupEnteredTime) > DL_MIN_SETUP_TIME_MS;
+      const isAngleDecreasing = dlAngleVelocity < -DL_LIFT_VELOCITY_THRESHOLD;
+      const isHipRising = avgVelocity < -VELOCITY_THRESHOLD;
+      const romSoFar = deepestTorsoAngle - (standingTorsoAngle || 0);
+
+      if (hasBeenInSetup && (isAngleDecreasing || isHipRising) && romSoFar >= DL_MIN_ROM_DEGREES) {
+        updateStatus('ascending'); // "ascending" = the pull / concentric phase
+        liftStartTime = performance.now();
+        deepestHipY = hipY; // Record starting hip position for speed calculation
+        velocityHistory = [];
+        smoothedVelocity = 0;
+        feedbackEl.textContent = "⬆ PULL!";
+      }
+      break;
+
+    case 'ascending': // The pull - user is lifting from setup to lockout
+      // Track for speed calculation: how much hip has risen since lift start
+      const hipRise = deepestHipY ? deepestHipY - hipY : 0;
+      const hipRiseInches = normToInches(hipRise);
+
+      // Check lockout: torso angle returns to near standing
+      const lockoutAngleDiff = Math.abs(torsoAngle - (standingTorsoAngle || 0));
+      const totalROM = deepestTorsoAngle - (standingTorsoAngle || 0);
+      const angleRecovery = totalROM > 0 ? ((deepestTorsoAngle - torsoAngle) / totalROM) * 100 : 0;
+
+      if (angleRecovery < 50) {
+        feedbackEl.textContent = `⬆ Pull! ${angleRecovery.toFixed(0)}% lockout`;
+      } else if (lockoutAngleDiff > DL_LOCKOUT_ANGLE_THRESHOLD) {
+        feedbackEl.textContent = `⬆ Lock it out! ${angleRecovery.toFixed(0)}%`;
+      }
+
+      // Lockout achieved: torso near vertical AND angle recovery sufficient
+      if (lockoutAngleDiff <= DL_LOCKOUT_ANGLE_THRESHOLD && angleRecovery >= 80) {
+        const liftTime = (performance.now() - liftStartTime) / 1000;
+        const romDegrees = totalROM;
+        // Speed score: use hip rise in inches for the distance component
+        const distanceForSpeed = Math.max(hipRiseInches, 1); // Fallback to prevent division by zero
+        const speedScore = calculateSpeedScore(liftTime, distanceForSpeed);
+        const quality = getLockoutQuality(lockoutAngleDiff);
+
+        repCount++;
+        repTimes.push(liftTime);
+        repDepths.push(romDegrees); // Store ROM in degrees for deadlift
+
+        // Record rep for workout tracking (use hipRiseInches as depth analog)
+        recordRep(liftTime, hipRiseInches, speedScore, quality.label.toLowerCase());
+
+        counterEl.textContent = `Reps: ${repCount}`;
+        feedbackEl.textContent = `✓ Rep ${repCount}: Speed ${speedScore} ${quality.emoji} ${quality.label} | ${romDegrees.toFixed(0)}° ROM`;
+
+        displayDeadliftRepTimes();
+
+        // Reset for next rep - go to standing briefly
+        updateStatus('standing');
+        deepestTorsoAngle = null;
+        setupTorsoAngle = null;
+        liftStartTime = null;
+        setupEnteredTime = null;
+        deepestHipY = null;
+        stableStandingStartTime = performance.now(); // Allow quick re-entry for touch-and-go
+
+        setTimeout(() => {
+          if (state === 'standing') {
+            feedbackEl.textContent = "Ready for next rep";
+          }
+        }, 1000);
+      }
+      break;
+  }
+}
+
+function displayDeadliftRepTimes() {
+  if (repTimes.length === 0) {
+    msgEl.innerHTML = '<div style="color: #666;">No reps yet</div>';
+    return;
+  }
+
+  const firstRepTime = repTimes[0];
+  const firstROM = repDepths[0];
+  // For speed comparison, use time directly since ROM should be consistent
+  let html = '<div style="margin-bottom: 10px; font-weight: bold;">Deadlift Speed Analysis</div>';
+
+  const recentReps = repTimes.slice(-5);
+  const recentROMs = repDepths.slice(-5);
+
+  recentReps.forEach((time, idx) => {
+    const actualRepNum = repTimes.length - recentReps.length + idx + 1;
+    const romDeg = recentROMs[idx];
+    const timeDrop = ((time - firstRepTime) / firstRepTime * 100).toFixed(1);
+    const dropNum = parseFloat(timeDrop);
+
+    let color = '#00FF00';
+    if (dropNum > VELOCITY_DROP_CRITICAL) color = '#FF4444';
+    else if (dropNum > VELOCITY_DROP_WARNING) color = '#FFA500';
+
+    html += `<div style="margin: 5px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">
+      <div style="font-size: 16px; margin-bottom: 4px;">
+        Rep ${actualRepNum}: ${time.toFixed(2)}s | ${romDeg.toFixed(0)}° ROM
+        <span style="color: ${color}; margin-left: 10px; font-weight: bold;">${dropNum > 0 ? '+' : ''}${dropNum.toFixed(1)}%</span>
+      </div>
+    </div>`;
+  });
+
+  msgEl.innerHTML = html;
+}
+
+function resetDeadliftState() {
+  updateStatus('standing');
+  deepestHipY = null;
+  deepestTorsoAngle = null;
+  setupTorsoAngle = null;
+  liftStartTime = null;
+  setupEnteredTime = null;
+  stableFrameCount = 0;
+  velocityHistory = [];
+  stableStandingStartTime = null;
+  trackingLossFrames = 0;
+  smoothedVelocity = 0;
+  dlAngleVelocity = 0;
 }
 
 function resetToStanding() {
@@ -814,30 +1252,58 @@ function drawPose(results) {
   const rightHip = landmarks[24];
   const leftKnee = landmarks[25];
   const rightKnee = landmarks[26];
-  
-  const leftValid = leftHip && leftKnee && 
-    (leftHip.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD && 
+  const leftShoulder = landmarks[11];
+  const rightShoulder = landmarks[12];
+
+  const leftValid = leftHip && leftKnee &&
+    (leftHip.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD &&
     (leftKnee.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
-  const rightValid = rightHip && rightKnee && 
-    (rightHip.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD && 
+  const rightValid = rightHip && rightKnee &&
+    (rightHip.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD &&
     (rightKnee.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD;
-  
+
   const useLeft = (currentSide === 'left');
   const hip = useLeft ? leftHip : rightHip;
   const knee = useLeft ? leftKnee : rightKnee;
+  const shoulder = useLeft ? leftShoulder : rightShoulder;
 
   if (hip && knee && ((useLeft && leftValid) || (!useLeft && rightValid))) {
+    // Draw hip-knee connection
     ctx.beginPath();
     ctx.moveTo(hip.x * canvas.width, hip.y * canvas.height);
     ctx.lineTo(knee.x * canvas.width, knee.y * canvas.height);
-    
+
     if (state === 'descending') ctx.strokeStyle = '#FFA500';
     else if (state === 'ascending') ctx.strokeStyle = '#00FF00';
     else ctx.strokeStyle = '#00BFFF';
-    
+
     ctx.lineWidth = 6;
     ctx.stroke();
-    
+
+    // For deadlift: also draw shoulder-hip connection (torso line)
+    if (currentExercise === 'deadlift' && shoulder && (shoulder.visibility || 0) > LANDMARK_VISIBILITY_THRESHOLD) {
+      ctx.beginPath();
+      ctx.moveTo(shoulder.x * canvas.width, shoulder.y * canvas.height);
+      ctx.lineTo(hip.x * canvas.width, hip.y * canvas.height);
+
+      if (state === 'descending') ctx.strokeStyle = '#FFA500';
+      else if (state === 'ascending') ctx.strokeStyle = '#00FF00';
+      else ctx.strokeStyle = '#a78bfa'; // Purple for torso line when standing
+
+      ctx.lineWidth = 6;
+      ctx.stroke();
+
+      // Shoulder dot
+      ctx.fillStyle = '#FF00FF';
+      ctx.beginPath();
+      ctx.arc(shoulder.x * canvas.width, shoulder.y * canvas.height, 12, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    // Hip dot
     ctx.fillStyle = '#FFD700';
     ctx.beginPath();
     ctx.arc(hip.x * canvas.width, hip.y * canvas.height, 14, 0, 2 * Math.PI);
@@ -846,6 +1312,7 @@ function drawPose(results) {
     ctx.lineWidth = 3;
     ctx.stroke();
 
+    // Knee dot
     ctx.fillStyle = '#00BFFF';
     ctx.beginPath();
     ctx.arc(knee.x * canvas.width, knee.y * canvas.height, 12, 0, 2 * Math.PI);
@@ -853,10 +1320,11 @@ function drawPose(results) {
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 3;
     ctx.stroke();
-    
+
     if (standingHipY && isCalibrated && inchesPerUnit) {
       const standingPos = standingHipY * canvas.height;
-      
+
+      // Standing baseline
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
       ctx.lineWidth = 2;
       ctx.setLineDash([5, 5]);
@@ -865,26 +1333,25 @@ function drawPose(results) {
       ctx.lineTo(canvas.width, standingPos);
       ctx.stroke();
       ctx.setLineDash([]);
-      
-      const depthMarkers = [
-        { inches: DEPTH_MARKER_HALF, color: 'rgba(255, 165, 0, 0.4)' },
-        { inches: DEPTH_MARKER_PARALLEL, color: 'rgba(255, 255, 0, 0.4)' },
-        { inches: DEPTH_MARKER_DEEP, color: 'rgba(0, 255, 0, 0.4)' }
-      ];
-      
-      depthMarkers.forEach(({ inches, color }) => {
-        const depthNorm = inchesToNorm(inches);
-        const depthY = standingPos + (depthNorm * canvas.height);
-        
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.moveTo(0, depthY);
-        ctx.lineTo(canvas.width, depthY);
-        ctx.stroke();
-      });
-      ctx.setLineDash([]);
+
+      // Depth markers (squat only - deadlift uses torso angle, not depth lines)
+      if (currentExercise !== 'deadlift' && exerciseConfig.depthMarkers) {
+        const depthMarkers = exerciseConfig.depthMarkers;
+
+        depthMarkers.forEach(({ inches, color }) => {
+          const depthNorm = inchesToNorm(inches);
+          const depthY = standingPos + (depthNorm * canvas.height);
+
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.moveTo(0, depthY);
+          ctx.lineTo(canvas.width, depthY);
+          ctx.stroke();
+        });
+        ctx.setLineDash([]);
+      }
     }
   }
   
@@ -942,6 +1409,21 @@ function drawPose(results) {
         ctx.fillText(`Recalib in: ${secondsRemaining}s`, -canvas.width + 10, y);
         y += 15;
       }
+
+      // Deadlift-specific debug info
+      if (currentExercise === 'deadlift' && debugInfo.torsoAngle) {
+        y += 5;
+        ctx.fillStyle = '#FF00FF';
+        ctx.fillText(`--- Deadlift ---`, -canvas.width + 10, y);
+        y += 15;
+        ctx.fillStyle = '#00FF00';
+        ctx.fillText(`Torso: ${debugInfo.torsoAngle}° (standing: ${debugInfo.standingTorsoAngle}°)`, -canvas.width + 10, y);
+        y += 15;
+        ctx.fillText(`Angle from standing: ${debugInfo.angleFromStanding}°`, -canvas.width + 10, y);
+        y += 15;
+        ctx.fillText(`Angle velocity: ${debugInfo.angleVelocity}`, -canvas.width + 10, y);
+        y += 15;
+      }
     }
     
     ctx.restore();
@@ -957,7 +1439,11 @@ function onResults(results) {
   drawPose(results);
   
   if (results.poseLandmarks && results.poseLandmarks.length) {
-    detectSquat(results.poseLandmarks);
+    if (currentExercise === 'deadlift') {
+      detectDeadlift(results.poseLandmarks);
+    } else {
+      detectSquat(results.poseLandmarks);
+    }
   }
 
   isProcessing = false;
@@ -1095,7 +1581,10 @@ async function initWorkout() {
       const createResponse = await fetch('/api/workouts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Squat Session' })
+        body: JSON.stringify({
+          name: exerciseConfig.sessionName,
+          exercise_type: currentExercise
+        })
       });
       const createData = await createResponse.json();
       if (createData.success) {
@@ -1213,6 +1702,130 @@ async function saveSet() {
 if (saveSetBtn) {
   saveSetBtn.addEventListener('click', saveSet);
 }
+
+// ========== EXERCISE SWITCHING ==========
+
+function setExercise(exercise) {
+  if (exercise === currentExercise) return;
+
+  currentExercise = exercise;
+  exerciseConfig = getExerciseConfig();
+
+  // Full reset of shared state
+  repCount = 0;
+  state = 'standing';
+  deepestHipY = null;
+  prevHipY = null;
+  stableFrameCount = 0;
+  ascentStartTime = null;
+  stateStartTime = null;
+  repTimes = [];
+  repDepths = [];
+  velocityHistory = [];
+  stableStandingStartTime = null;
+  rebaselineStabilityCount = 0;
+  potentialNewBaseline = null;
+  trackingLossFrames = 0;
+  lastSquatStartTime = null;
+  calibrationCompletedTime = null;
+  smoothedVelocity = 0;
+  currentSetReps = [];
+
+  // Reset calibration (different exercises need different calibration)
+  standingHipY = null;
+  standingHipX = null;
+  hipKneeDistance = null;
+  inchesPerUnit = null;
+  isCalibrated = false;
+  calibrationHipYValues = [];
+  lockedSide = null;
+  smoothedHipY = null;
+  smoothedHipX = null;
+  positionHistory = [];
+  typicalMovementMagnitude = 0.01;
+
+  // Reset deadlift-specific state
+  standingTorsoAngle = null;
+  setupTorsoAngle = null;
+  deepestTorsoAngle = null;
+  liftStartTime = null;
+  setupEnteredTime = null;
+  dlSmoothedAngle = null;
+  dlAngleVelocity = 0;
+  prevTorsoAngle = null;
+
+  // Update UI
+  counterEl.textContent = 'Reps: 0';
+  msgEl.innerHTML = '';
+  feedbackEl.textContent = `Switched to ${exerciseConfig.name} - stand sideways and stay still`;
+  updateStatus('standing');
+
+  if (saveSetBtn) {
+    saveSetBtn.classList.remove('has-reps');
+    saveSetBtn.textContent = programExerciseId ? 'Save to Program' : 'Save Set';
+  }
+
+  // Update selector UI
+  document.querySelectorAll('.exercise-option').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.exercise === exercise);
+  });
+
+  // Update page title
+  document.title = `Chronicle - ${exerciseConfig.name} Tracker`;
+
+  // Finish current workout and start a new one for this exercise type
+  switchWorkoutForExercise();
+}
+
+async function switchWorkoutForExercise() {
+  // Finish current workout if it exists
+  if (currentWorkoutId) {
+    try {
+      await fetch(`/api/workouts/${currentWorkoutId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ complete: true })
+      });
+      workoutChannel.postMessage({ type: 'WORKOUT_UPDATED' });
+    } catch (err) {
+      console.error('Failed to finish workout:', err);
+    }
+  }
+
+  // Create a new workout for the new exercise type
+  try {
+    const createResponse = await fetch('/api/workouts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: exerciseConfig.sessionName,
+        exercise_type: currentExercise
+      })
+    });
+    const createData = await createResponse.json();
+    if (createData.success) {
+      currentWorkoutId = createData.workout.id;
+      updateSetCounter(0);
+      workoutChannel.postMessage({ type: 'WORKOUT_UPDATED' });
+    }
+  } catch (err) {
+    console.error('Failed to create workout:', err);
+  }
+}
+
+// Initialize exercise config
+exerciseConfig = getExerciseConfig();
+
+// Read exercise type from URL params
+(function initExerciseFromURL() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const exercise = urlParams.get('exercise');
+  if (exercise === 'deadlift') {
+    currentExercise = 'deadlift';
+    exerciseConfig = getExerciseConfig();
+    document.title = 'Chronicle - Deadlift Tracker';
+  }
+})();
 
 // Initialize
 initialize();

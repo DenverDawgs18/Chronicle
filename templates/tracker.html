@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="{{ url_for('static', filename='universal.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='tracker.css') }}">
-  <title>Chronicle - Squat Tracker</title>
+  <title>Chronicle - {{ exercise_name }} Tracker</title>
 </head>
 <body>
 <nav class="tracker-nav">
@@ -15,6 +15,10 @@
     </svg>
     Dashboard
   </a>
+  <div class="exercise-selector">
+    <button class="exercise-option {{ 'active' if exercise_type == 'squat' else '' }}" data-exercise="squat" onclick="setExercise('squat')">Squat</button>
+    <button class="exercise-option {{ 'active' if exercise_type == 'deadlift' else '' }}" data-exercise="deadlift" onclick="setExercise('deadlift')">Deadlift</button>
+  </div>
   <span id="setCounter" class="set-counter">Set 1</span>
   <span id="programExerciseIndicator" class="program-indicator hidden"></span>
 </nav>
