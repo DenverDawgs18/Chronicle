@@ -441,12 +441,20 @@ def tracker():
     if not current_user.subscribed:
         return redirect(url_for('subscribe'))
     exercise_type = request.args.get('exercise', 'squat')
-    if exercise_type not in ('squat', 'deadlift'):
+    valid_exercises = {
+        'squat': 'Squat',
+        'deadlift': 'Deadlift',
+        'rdl': 'RDL',
+        'single-leg-rdl': 'Single Leg RDL',
+        'hack-squat': 'Hack Squat',
+        'bulgarian-squat': 'Bulgarian Squat',
+        'split-squat': 'Split Squat',
+    }
+    if exercise_type not in valid_exercises:
         exercise_type = 'squat'
-    exercise_names = {'squat': 'Squat', 'deadlift': 'Deadlift'}
     return render_template('tracker.html', height=current_user.height,
                          exercise_type=exercise_type,
-                         exercise_name=exercise_names[exercise_type])
+                         exercise_name=valid_exercises[exercise_type])
 
 @app.route("/set_height", methods= ['POST'])
 @login_required
@@ -1761,6 +1769,13 @@ def update_profile():
             'height': current_user.height
         }
     })
+
+
+@app.route('/tests')
+def run_tests():
+    if not app.debug:
+        return "Tests only available in development mode", 403
+    return app.send_static_file('tests/test-runner.html')
 
 
 if __name__ == '__main__':
