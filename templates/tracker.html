@@ -32,6 +32,9 @@
       <button class="exercise-option {{ 'active' if exercise_type == 'general-lunge' else '' }}" data-exercise="general-lunge" onclick="setExercise('general-lunge')" title="Lunges, step-ups, lateral lunges, etc.">Lunge+</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'general-hinge' else '' }}" data-exercise="general-hinge" onclick="setExercise('general-hinge')" title="Good mornings, KB swings, pull-throughs, etc.">Hinge+</button>
     </div>
+    <div class="exercise-selector-group exercise-selector-press">
+      <button class="exercise-option {{ 'active' if exercise_type == 'bench-press' else '' }}" data-exercise="bench-press" onclick="setExercise('bench-press')">Bench</button>
+    </div>
   </div>
   <span id="setCounter" class="set-counter">Set 1</span>
   <span id="programExerciseIndicator" class="program-indicator hidden"></span>
@@ -56,6 +59,14 @@
 
   <div id="status" class="status-indicator status-standing">STANDING</div>
   <div id="counter">Reps: 0</div>
+
+  <div id="cameraHint" class="camera-hint">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M12 16v-4M12 8h.01"/>
+    </svg>
+    <span id="cameraHintText">Camera needs: Hip + Knee visible (side view)</span>
+  </div>
 
   <div class="content-stack">
     <div id="msg">Your rep speed will show up here</div>
@@ -98,6 +109,7 @@
   <script src="{{ url_for('static', filename='exercises/general-squat.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/general-lunge.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/general-hinge.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/bench-press.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/registry.js') }}"></script>
   <script src="{{ url_for('static', filename='squat.js') }}"></script>
 </body>
