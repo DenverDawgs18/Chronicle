@@ -109,6 +109,31 @@ body {
   display: none;
 }
 
+/* Camera Hint Tooltip */
+.camera-hint {
+  position: fixed;
+  top: 60px;
+  left: 20px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(96, 165, 250, 0.15);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.8);
+  transition: all 0.3s ease;
+}
+
+.camera-hint svg {
+  flex-shrink: 0;
+  color: #60a5fa;
+}
+
 /* Control Buttons */
 .control-buttons {
   display: flex;
@@ -404,6 +429,12 @@ body {
         padding: 4px 10px !important;
       }
 
+      .camera-hint {
+        top: 52px;
+        font-size: 10px;
+        padding: 4px 8px;
+      }
+
       video, canvas {
         max-width: 75%;
         max-height: 70%;
@@ -479,6 +510,13 @@ body {
 
       .nav-back span {
         display: none;
+      }
+
+      .camera-hint {
+        top: 48px;
+        font-size: 9px;
+        padding: 3px 6px;
+        left: 10px;
       }
 
       #controls {

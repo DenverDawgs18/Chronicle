@@ -500,6 +500,58 @@ From `map.md`:
 - Writing tests
 - Simplifying HTML where possible (Jinja?)
 
+## Upper Body Tracking Roadmap
+
+Upper body exercises use **wrist and elbow landmarks** from MediaPipe rather than the hip/knee tracking used for lower body. The camera should be positioned from the side so that the full arm path is visible.
+
+### MediaPipe Landmarks for Upper Body
+| Landmark Index | Name | Use |
+|----------------|------|-----|
+| 11 / 12 | Left / Right Shoulder | Shoulder position baseline |
+| 13 / 14 | Left / Right Elbow | Elbow angle for depth quality |
+| 15 / 16 | Left / Right Wrist | Bar/hand path tracking (primary metric) |
+
+### Phase 1: Flat Bench Press (Implemented)
+- **Detection method**: Track wrist Y position as the bar descends and ascends
+- **Calibration**: Wrist position at lockout (arms extended) establishes the baseline
+- **Depth quality**: Based on how far the wrist descends (elbow angle proxy)
+  - Deep (wrist near/below shoulder level)
+  - Parallel (90-degree elbow angle zone)
+  - Partial (above parallel)
+- **Speed score**: Concentric phase velocity, normalized with `referenceDepth: 10` (inches of wrist travel)
+- **Camera setup**: Side view, camera needs to see shoulder, elbow, and wrist
+- **State machine**: `lockout → descending → ascending → lockout (rep counted)`
+
+### Phase 2: Overhead Press (Planned)
+- Track wrist Y position overhead
+- Calibration at bottom position (bar at shoulder height)
+- Depth/quality based on lockout completeness overhead
+- Detect strict press vs push press via knee movement
+- Camera setup: Side view, needs shoulder + wrist + elbow visible
+
+### Phase 3: Barbell Row (Planned)
+- Track torso angle (like deadlift) + wrist position
+- Calibration in hinged-over position
+- Quality based on how close wrist reaches the torso
+- Detect cheating via torso angle change during pull
+- Camera setup: Side view, needs shoulder + hip + wrist visible
+
+### Phase 4: Additional Upper Body (Planned)
+- **Incline Bench Press**: Variant of flat bench with adjusted angle thresholds
+- **Close-Grip Bench**: Same detection as flat bench, different exercise label
+- **Push-ups**: Wrist/shoulder tracking with body horizontal
+- **Dips**: Shoulder/elbow tracking in vertical plane
+
+### Camera Visibility Requirements
+Each exercise category requires specific body parts to be visible:
+| Category | Required Landmarks | Camera Position |
+|----------|-------------------|-----------------|
+| Squat variations | Hip, Knee | Side view |
+| Deadlift / Hinge | Shoulder, Hip, Knee | Side view |
+| Bench Press | Shoulder, Elbow, Wrist | Side view (from head or foot of bench) |
+| Overhead Press | Shoulder, Elbow, Wrist | Side view |
+| Row | Shoulder, Hip, Wrist | Side view |
+
 ## Security Notes
 
 - Passwords hashed with Werkzeug (bcrypt-based)
