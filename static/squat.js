@@ -146,9 +146,19 @@ function drawPose(results) {
   const C = Chronicle.CONSTANTS;
 
   const isUpperBody = exerciseModule && exerciseModule.needsWrist;
+  const isHybridRow = exerciseModule && exerciseModule.needsWrist && exerciseModule.needsHip;
 
   if (DEBUG_MODE) {
-    const landmarksToShow = isUpperBody ? [
+    const landmarksToShow = isHybridRow ? [
+      { idx: 11, name: 'L_Shoulder', color: '#FF00FF' },
+      { idx: 12, name: 'R_Shoulder', color: '#FF00FF' },
+      { idx: 13, name: 'L_Elbow', color: '#FFD700' },
+      { idx: 14, name: 'R_Elbow', color: '#FFD700' },
+      { idx: 15, name: 'L_Wrist', color: '#00BFFF' },
+      { idx: 16, name: 'R_Wrist', color: '#00BFFF' },
+      { idx: 23, name: 'L_Hip', color: '#FF6B6B' },
+      { idx: 24, name: 'R_Hip', color: '#FF6B6B' },
+    ] : isUpperBody ? [
       { idx: 11, name: 'L_Shoulder', color: '#FF00FF' },
       { idx: 12, name: 'R_Shoulder', color: '#FF00FF' },
       { idx: 13, name: 'L_Elbow', color: '#FFD700' },
@@ -193,7 +203,9 @@ function drawPose(results) {
       }
     });
 
-    const connections = isUpperBody
+    const connections = isHybridRow
+      ? [[11, 13], [12, 14], [13, 15], [14, 16], [11, 23], [12, 24]]
+      : isUpperBody
       ? [[11, 13], [12, 14], [13, 15], [14, 16]]
       : [[23, 25], [24, 26], [25, 27], [26, 28]];
     connections.forEach(([start, end]) => {
@@ -272,23 +284,50 @@ function drawPose(results) {
       ctx.lineWidth = 3;
       ctx.stroke();
 
-      // Lockout baseline and depth markers
+      // Hybrid row: also draw shoulder-hip torso line and hip dot
+      if (isHybridRow) {
+        const hipUB = active.hip;
+        const hipValid = hipUB && (hipUB.visibility || 0) > C.LANDMARK_VISIBILITY_THRESHOLD;
+        if (hipValid) {
+          // Shoulder-hip connection (torso line)
+          ctx.beginPath();
+          ctx.moveTo(shoulderUB.x * canvas.width, shoulderUB.y * canvas.height);
+          ctx.lineTo(hipUB.x * canvas.width, hipUB.y * canvas.height);
+          ctx.strokeStyle = stateColor === '#00BFFF' ? '#a78bfa' : stateColor;
+          ctx.lineWidth = 6;
+          ctx.stroke();
+
+          // Hip dot
+          ctx.fillStyle = '#FF6B6B';
+          ctx.beginPath();
+          ctx.arc(hipUB.x * canvas.width, hipUB.y * canvas.height, 12, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
+      }
+
+      // Baseline and depth markers
       if (trackingState.standingHipY && trackingState.isCalibrated && trackingState.inchesPerUnit) {
-        const lockoutPos = trackingState.standingHipY * canvas.height;
+        const baselinePos = trackingState.standingHipY * canvas.height;
+        const invert = exerciseModule && exerciseModule.invertDepthMarkers;
 
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 5]);
         ctx.beginPath();
-        ctx.moveTo(0, lockoutPos);
-        ctx.lineTo(canvas.width, lockoutPos);
+        ctx.moveTo(0, baselinePos);
+        ctx.lineTo(canvas.width, baselinePos);
         ctx.stroke();
         ctx.setLineDash([]);
 
         if (exerciseModule && exerciseModule.depthMarkers) {
           exerciseModule.depthMarkers.forEach(({ inches, color }) => {
             const depthNorm = Chronicle.utils.inchesToNorm(inches, trackingState);
-            const depthY = lockoutPos + (depthNorm * canvas.height);
+            const depthY = invert
+              ? baselinePos - (depthNorm * canvas.height)   // Row: markers go upward
+              : baselinePos + (depthNorm * canvas.height);  // Bench/OHP: markers go downward
 
             ctx.strokeStyle = color;
             ctx.lineWidth = 1;
@@ -403,7 +442,7 @@ function drawPose(results) {
     ctx.save();
     ctx.scale(-1, 1);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-    ctx.fillRect(-canvas.width, 0, 380, 340);
+    ctx.fillRect(-canvas.width, 0, 380, 380);
 
     ctx.fillStyle = '#00FF00';
     ctx.font = '11px monospace';
@@ -449,8 +488,27 @@ function drawPose(results) {
         y += 15;
       }
 
+      // Row exercise debug info
+      if (trackingState.debugInfo.pullInches) {
+        y += 5;
+        ctx.fillStyle = '#FF00FF';
+        ctx.fillText(`--- ${exerciseModule.name} ---`, -canvas.width + 10, y);
+        y += 15;
+        ctx.fillStyle = '#00FF00';
+        ctx.fillText(`Pull height: ${trackingState.debugInfo.pullInches}"`, -canvas.width + 10, y);
+        y += 15;
+        ctx.fillText(`Torso: ${trackingState.debugInfo.torsoAngle}deg`, -canvas.width + 10, y);
+        y += 15;
+        ctx.fillText(`Torso change: ${trackingState.debugInfo.torsoChange}deg`, -canvas.width + 10, y);
+        y += 15;
+        ctx.fillStyle = trackingState.debugInfo.cheating === 'YES' ? '#FF4444' : '#00FF00';
+        ctx.fillText(`Cheating: ${trackingState.debugInfo.cheating}`, -canvas.width + 10, y);
+        y += 15;
+        ctx.fillStyle = '#00FF00';
+      }
+
       // Hinge exercise debug info
-      if (trackingState.debugInfo.torsoAngle) {
+      if (trackingState.debugInfo.angleFromStanding) {
         y += 5;
         ctx.fillStyle = '#FF00FF';
         ctx.fillText(`--- ${exerciseModule.name} ---`, -canvas.width + 10, y);
@@ -747,6 +805,7 @@ const cameraHints = {
   'general-hinge': 'Camera needs: Shoulder + Hip + Knee visible (side view)',
   'bench-press': 'Camera needs: Shoulder + Elbow + Wrist visible (side view)',
   'overhead-press': 'Camera needs: Shoulder + Elbow + Wrist visible (side view)',
+  'barbell-row': 'Camera needs: Shoulder + Hip + Wrist visible (side view)',
 };
 
 function updateCameraHint() {
