@@ -826,6 +826,7 @@ const cameraHints = {
   'general-hinge': 'Camera needs: Shoulder + Hip + Knee visible (side view)',
   'bench-press': 'Camera needs: Shoulder + Elbow + Wrist visible (side view)',
   'overhead-press': 'Camera needs: Shoulder + Elbow + Wrist visible (side view)',
+  'dips': 'Camera needs: Shoulder + Elbow visible (side view)',
   'general-press': 'Camera needs: Shoulder + Elbow + Wrist visible (side view)',
   'barbell-row': 'Camera needs: Shoulder + Hip + Wrist or Elbow visible (side view)',
   'general-pull': 'Camera needs: Shoulder + Hip + Wrist or Elbow visible (side view)',

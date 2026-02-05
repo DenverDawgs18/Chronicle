@@ -454,6 +454,7 @@ def tracker():
         'general-hinge': 'General Hinge',
         'bench-press': 'Bench Press',
         'overhead-press': 'Overhead Press',
+        'dips': 'Dips',
         'general-press': 'General Press',
         'barbell-row': 'Barbell Row',
         'dumbbell-row': 'Dumbbell Row',
