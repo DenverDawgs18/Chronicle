@@ -451,6 +451,7 @@ def tracker():
         'split-squat': 'Split Squat',
         'bench-press': 'Bench Press',
         'overhead-press': 'Overhead Press',
+        'barbell-row': 'Barbell Row',
     }
     if exercise_type not in valid_exercises:
         exercise_type = 'squat'
