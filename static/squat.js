@@ -746,6 +746,7 @@ const cameraHints = {
   'single-leg-rdl': 'Camera needs: Shoulder + Hip + Knee visible (side view)',
   'general-hinge': 'Camera needs: Shoulder + Hip + Knee visible (side view)',
   'bench-press': 'Camera needs: Shoulder + Elbow + Wrist visible (side view)',
+  'overhead-press': 'Camera needs: Shoulder + Elbow + Wrist visible (side view)',
 };
 
 function updateCameraHint() {

@@ -450,6 +450,7 @@ def tracker():
         'bulgarian-squat': 'Bulgarian Squat',
         'split-squat': 'Split Squat',
         'bench-press': 'Bench Press',
+        'overhead-press': 'Overhead Press',
     }
     if exercise_type not in valid_exercises:
         exercise_type = 'squat'

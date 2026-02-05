@@ -34,6 +34,7 @@
     </div>
     <div class="exercise-selector-group exercise-selector-press">
       <button class="exercise-option {{ 'active' if exercise_type == 'bench-press' else '' }}" data-exercise="bench-press" onclick="setExercise('bench-press')">Bench</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'overhead-press' else '' }}" data-exercise="overhead-press" onclick="setExercise('overhead-press')">OHP</button>
     </div>
   </div>
   <span id="setCounter" class="set-counter">Set 1</span>
@@ -110,6 +111,7 @@
   <script src="{{ url_for('static', filename='exercises/general-lunge.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/general-hinge.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/bench-press.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/overhead-press.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/registry.js') }}"></script>
   <script src="{{ url_for('static', filename='squat.js') }}"></script>
 </body>
