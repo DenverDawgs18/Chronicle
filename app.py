@@ -449,12 +449,17 @@ def tracker():
         'hack-squat': 'Hack Squat',
         'bulgarian-squat': 'Bulgarian Squat',
         'split-squat': 'Split Squat',
+        'general-squat': 'General Squat',
+        'general-lunge': 'General Lunge',
+        'general-hinge': 'General Hinge',
         'bench-press': 'Bench Press',
         'overhead-press': 'Overhead Press',
+        'general-press': 'General Press',
         'barbell-row': 'Barbell Row',
         'dumbbell-row': 'Dumbbell Row',
         'pendlay-row': 'Pendlay Row',
         'cable-row': 'Cable Row',
+        'general-pull': 'General Pull',
     }
     if exercise_type not in valid_exercises:
         exercise_type = 'squat'
