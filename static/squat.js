@@ -114,6 +114,11 @@ resetBtn.addEventListener('click', () => {
     trackingState.dlAngleVelocity = 0;
     trackingState.prevTorsoAngle = null;
 
+    // Row elbow fallback state
+    trackingState.rowTrackingPoint = null;
+    trackingState.rowCalibPoint = null;
+    trackingState.rowWristElbowOffset = null;
+
     feedbackEl.textContent = 'Counter reset! Stand sideways and stay still';
   } else {
     feedbackEl.textContent = `Counter reset! Calibration kept - ready to ${exerciseModule.name.toLowerCase()}`;
@@ -237,7 +242,12 @@ function drawPose(results) {
     const elbowValid = elbowUB && (elbowUB.visibility || 0) > C.LANDMARK_VISIBILITY_THRESHOLD;
     const wristValid = wristUB && (wristUB.visibility || 0) > C.LANDMARK_VISIBILITY_THRESHOLD;
 
-    if (shoulderValid && elbowValid && wristValid) {
+    // For hybrid row (barbell row), allow drawing with just shoulder+elbow (wrist may be behind plates)
+    const minDrawValid = isHybridRow
+      ? (shoulderValid && elbowValid)
+      : (shoulderValid && elbowValid && wristValid);
+
+    if (minDrawValid) {
       const stateColor = trackingState.state === 'descending' ? '#FFA500'
         : trackingState.state === 'ascending' ? '#00FF00' : '#00BFFF';
 
@@ -249,13 +259,15 @@ function drawPose(results) {
       ctx.lineWidth = 6;
       ctx.stroke();
 
-      // Elbow-wrist connection
-      ctx.beginPath();
-      ctx.moveTo(elbowUB.x * canvas.width, elbowUB.y * canvas.height);
-      ctx.lineTo(wristUB.x * canvas.width, wristUB.y * canvas.height);
-      ctx.strokeStyle = stateColor;
-      ctx.lineWidth = 6;
-      ctx.stroke();
+      // Elbow-wrist connection (only if wrist visible)
+      if (wristValid) {
+        ctx.beginPath();
+        ctx.moveTo(elbowUB.x * canvas.width, elbowUB.y * canvas.height);
+        ctx.lineTo(wristUB.x * canvas.width, wristUB.y * canvas.height);
+        ctx.strokeStyle = stateColor;
+        ctx.lineWidth = 6;
+        ctx.stroke();
+      }
 
       // Shoulder dot
       ctx.fillStyle = '#FF00FF';
@@ -266,23 +278,26 @@ function drawPose(results) {
       ctx.lineWidth = 3;
       ctx.stroke();
 
-      // Elbow dot
-      ctx.fillStyle = '#FFD700';
+      // Elbow dot (larger when it's the active tracking point)
+      const elbowRadius = (isHybridRow && !wristValid) ? 16 : 14;
+      ctx.fillStyle = (isHybridRow && !wristValid) ? '#00BFFF' : '#FFD700';
       ctx.beginPath();
-      ctx.arc(elbowUB.x * canvas.width, elbowUB.y * canvas.height, 14, 0, 2 * Math.PI);
+      ctx.arc(elbowUB.x * canvas.width, elbowUB.y * canvas.height, elbowRadius, 0, 2 * Math.PI);
       ctx.fill();
       ctx.strokeStyle = '#000';
       ctx.lineWidth = 3;
       ctx.stroke();
 
-      // Wrist dot
-      ctx.fillStyle = '#00BFFF';
-      ctx.beginPath();
-      ctx.arc(wristUB.x * canvas.width, wristUB.y * canvas.height, 12, 0, 2 * Math.PI);
-      ctx.fill();
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 3;
-      ctx.stroke();
+      // Wrist dot (only if visible)
+      if (wristValid) {
+        ctx.fillStyle = '#00BFFF';
+        ctx.beginPath();
+        ctx.arc(wristUB.x * canvas.width, wristUB.y * canvas.height, 12, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
 
       // Hybrid row: also draw shoulder-hip torso line and hip dot
       if (isHybridRow) {
@@ -497,6 +512,12 @@ function drawPose(results) {
         ctx.fillStyle = '#00FF00';
         ctx.fillText(`Pull height: ${trackingState.debugInfo.pullInches}"`, -canvas.width + 10, y);
         y += 15;
+        if (trackingState.debugInfo.rowTrackPt) {
+          ctx.fillStyle = trackingState.debugInfo.rowTrackPt === 'elbow' ? '#FFD700' : '#00FF00';
+          ctx.fillText(`Track point: ${trackingState.debugInfo.rowTrackPt}`, -canvas.width + 10, y);
+          y += 15;
+          ctx.fillStyle = '#00FF00';
+        }
         ctx.fillText(`Torso: ${trackingState.debugInfo.torsoAngle}deg`, -canvas.width + 10, y);
         y += 15;
         ctx.fillText(`Torso change: ${trackingState.debugInfo.torsoChange}deg`, -canvas.width + 10, y);
@@ -805,7 +826,7 @@ const cameraHints = {
   'general-hinge': 'Camera needs: Shoulder + Hip + Knee visible (side view)',
   'bench-press': 'Camera needs: Shoulder + Elbow + Wrist visible (side view)',
   'overhead-press': 'Camera needs: Shoulder + Elbow + Wrist visible (side view)',
-  'barbell-row': 'Camera needs: Shoulder + Hip + Wrist visible (side view)',
+  'barbell-row': 'Camera needs: Shoulder + Hip + Wrist or Elbow visible (side view)',
 };
 
 function updateCameraHint() {

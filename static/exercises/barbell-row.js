@@ -1,10 +1,18 @@
 // ========== Barbell Row Exercise Module ==========
-// Hybrid exercise: tracks torso angle (hip hinge) + wrist position (pull).
+// Hybrid exercise: tracks torso angle (hip hinge) + wrist/elbow position (pull).
 // Calibrates in hinged-over position with bar hanging down.
-// Quality based on how far wrist rises toward torso during the pull.
+// Quality based on how far the tracking point rises toward torso during the pull.
 // Monitors torso angle change during pull for cheat detection.
-// Camera should be positioned from the side so shoulder, hip, and wrist are visible.
-// State machine: standing (hinged) → ascending (pulling up) → descending (lowering) → rep counted.
+// Camera should be positioned from the side so shoulder, hip, and arm are visible.
+//
+// ELBOW FALLBACK: When plates occlude the wrist from a side view, the module
+// automatically falls back to tracking the elbow (which sits above the plates).
+// Calibration with elbow uses the same SHOULDER_WRIST_RATIO but with the shorter
+// shoulder-to-elbow distance, producing an inflated inchesPerUnit that converts
+// elbow movement into wrist-equivalent inches. All quality thresholds and speed
+// scores remain unchanged regardless of which landmark is tracked.
+//
+// State machine: standing (hinged) -> ascending (pulling up) -> descending (lowering) -> rep counted.
 
 (function() {
   const C = Chronicle.CONSTANTS;
@@ -19,15 +27,19 @@
     DEPTH_TRIGGER_MULTIPLIER: 1.5, // Multiplier for well-past-threshold check
     RECOVERY_WARNING_THRESHOLD: 50,
 
-    // Pull quality thresholds (wrist travel upward in inches)
+    // Pull quality thresholds (wrist-equivalent travel upward in inches)
     DEPTH_MARKER_PARTIAL: 4,       // Partial pull
     DEPTH_MARKER_BELLY: 7,         // Mid-torso / belly button area
     DEPTH_MARKER_CHEST: 10,        // Full pull to chest/ribcage
 
-    // Calibration - uses shoulder-to-wrist distance at hinged position
+    // Calibration - uses shoulder-to-tracking-point distance at hinged position
     SHOULDER_WRIST_RATIO: 0.37,    // Shoulder-wrist distance as fraction of height
     CALIBRATION_TOLERANCE: 0.15,
     SETUP_MIN_ANGLE: 25,           // Minimum torso hinge angle for calibration (degrees)
+
+    // Elbow fallback - sanity bounds for shoulder-to-elbow distance
+    ELBOW_CAL_DIST_MIN: 0.01,     // Min normalized shoulder-elbow distance
+    ELBOW_CAL_DIST_MAX: 0.28,     // Max normalized shoulder-elbow distance
 
     // Torso angle monitoring (cheat detection)
     CHEAT_ANGLE_THRESHOLD: 15,     // Degrees of torso angle change = cheating
@@ -46,27 +58,38 @@
       wrist: useLeft ? landmarks[15] : landmarks[16],
       hip: useLeft ? landmarks[23] : landmarks[24],
       otherShoulder: useLeft ? landmarks[12] : landmarks[11],
+      otherElbow: useLeft ? landmarks[14] : landmarks[13],
       otherWrist: useLeft ? landmarks[16] : landmarks[15],
       otherHip: useLeft ? landmarks[24] : landmarks[23],
     };
   }
 
   /**
-   * Detect which side has better shoulder, hip, and wrist visibility.
-   * Requires shoulder + hip + wrist for the row (hybrid exercise).
+   * Check if a landmark is visible above threshold
+   */
+  function isVisible(lm) {
+    return lm && (lm.visibility || 0) > C.LANDMARK_VISIBILITY_THRESHOLD;
+  }
+
+  /**
+   * Detect which side has better shoulder + hip + (wrist OR elbow) visibility.
+   * Accepts elbow as a fallback when wrist is occluded by plates.
    */
   function detectRowSide(landmarks, state) {
     const leftShoulder = landmarks[11];
     const rightShoulder = landmarks[12];
+    const leftElbow = landmarks[13];
+    const rightElbow = landmarks[14];
     const leftWrist = landmarks[15];
     const rightWrist = landmarks[16];
     const leftHip = landmarks[23];
     const rightHip = landmarks[24];
 
-    const vis = (lm) => (lm && (lm.visibility || 0) > C.LANDMARK_VISIBILITY_THRESHOLD);
-
-    const leftValid = vis(leftShoulder) && vis(leftWrist) && vis(leftHip);
-    const rightValid = vis(rightShoulder) && vis(rightWrist) && vis(rightHip);
+    // A side is valid if shoulder + hip + (wrist OR elbow) are visible
+    const leftTrackOk = isVisible(leftWrist) || isVisible(leftElbow);
+    const rightTrackOk = isVisible(rightWrist) || isVisible(rightElbow);
+    const leftValid = isVisible(leftShoulder) && leftTrackOk && isVisible(leftHip);
+    const rightValid = isVisible(rightShoulder) && rightTrackOk && isVisible(rightHip);
 
     if (!leftValid && !rightValid) {
       state.trackingLossFrames++;
@@ -77,20 +100,25 @@
 
     if (state.lockedSide === null) {
       if (leftValid && rightValid) {
-        const leftWristVis = leftWrist.visibility || 0;
-        const rightWristVis = rightWrist.visibility || 0;
-        state.lockedSide = leftWristVis > rightWristVis ? 'left' : 'right';
+        // Prefer the side with best wrist visibility; fall back to elbow
+        const leftBestVis = Math.max(leftWrist.visibility || 0, leftElbow.visibility || 0);
+        const rightBestVis = Math.max(rightWrist.visibility || 0, rightElbow.visibility || 0);
+        state.lockedSide = leftBestVis > rightBestVis ? 'left' : 'right';
       } else {
         state.lockedSide = leftValid ? 'left' : 'right';
       }
     } else {
       const currentValid = state.lockedSide === 'left' ? leftValid : rightValid;
       const otherValid = state.lockedSide === 'left' ? rightValid : leftValid;
-      const currentWristVis = state.lockedSide === 'left' ? (leftWrist.visibility || 0) : (rightWrist.visibility || 0);
-      const otherWristVis = state.lockedSide === 'left' ? (rightWrist.visibility || 0) : (leftWrist.visibility || 0);
+      const currentBestVis = state.lockedSide === 'left'
+        ? Math.max(leftWrist.visibility || 0, leftElbow.visibility || 0)
+        : Math.max(rightWrist.visibility || 0, rightElbow.visibility || 0);
+      const otherBestVis = state.lockedSide === 'left'
+        ? Math.max(rightWrist.visibility || 0, rightElbow.visibility || 0)
+        : Math.max(leftWrist.visibility || 0, leftElbow.visibility || 0);
 
       if (!currentValid && otherValid &&
-          (otherWristVis - currentWristVis > C.SIDE_LOCK_CONFIDENCE_THRESHOLD) &&
+          (otherBestVis - currentBestVis > C.SIDE_LOCK_CONFIDENCE_THRESHOLD) &&
           state.state === 'standing') {
         state.lockedSide = state.lockedSide === 'left' ? 'right' : 'left';
       }
@@ -101,11 +129,56 @@
   }
 
   /**
-   * Calibrate wrist position at hinged-over position (bar hanging down).
-   * Requires sufficient torso hinge angle before accepting calibration.
-   * Uses shoulder-to-wrist distance for inches-per-unit scaling.
+   * Select the best available tracking point (wrist preferred, elbow fallback).
+   * Returns { y, x, point: 'wrist'|'elbow' } or null if neither is visible.
    */
-  function calibrateRowBaseline(wristY, wristX, shoulderY, shoulderX, hipY, hipX, state, feedbackEl) {
+  function selectTrackingPoint(row) {
+    if (isVisible(row.wrist)) {
+      return { y: row.wrist.y, x: row.wrist.x, point: 'wrist' };
+    }
+    if (isVisible(row.elbow)) {
+      return { y: row.elbow.y, x: row.elbow.x, point: 'elbow' };
+    }
+    return null;
+  }
+
+  /**
+   * Convert a raw tracking Y to the calibrated coordinate space.
+   * If the current tracking point differs from the calibration point,
+   * applies the stored offset to produce consistent values.
+   */
+  function adjustTrackingY(rawY, currentPoint, state) {
+    if (!state.rowCalibPoint || currentPoint === state.rowCalibPoint) {
+      return rawY; // Same point as calibration, no adjustment needed
+    }
+    // Different point: apply offset to convert to calibration point's space
+    if (state.rowWristElbowOffset !== null) {
+      if (state.rowCalibPoint === 'wrist' && currentPoint === 'elbow') {
+        // Calibrated with wrist, now using elbow: elbow is higher (lower Y)
+        return rawY + state.rowWristElbowOffset;
+      } else if (state.rowCalibPoint === 'elbow' && currentPoint === 'wrist') {
+        // Calibrated with elbow, now using wrist: wrist is lower (higher Y)
+        return rawY - state.rowWristElbowOffset;
+      }
+    }
+    // No offset available - use raw value (may cause brief inaccuracy)
+    return rawY;
+  }
+
+  /**
+   * Calibrate tracking point position at hinged-over position (bar hanging down).
+   * Requires sufficient torso hinge angle before accepting calibration.
+   * Uses shoulder-to-tracking-point distance for inches-per-unit scaling.
+   * When calibrating with elbow (wrist occluded), uses the same SHOULDER_WRIST_RATIO
+   * which produces an inflated inchesPerUnit that auto-converts elbow movement
+   * into wrist-equivalent inches.
+   */
+  function calibrateRowBaseline(trackY, trackX, trackPoint, row, state, feedbackEl) {
+    const shoulderY = row.shoulder.y;
+    const shoulderX = row.shoulder.x;
+    const hipY = row.hip.y;
+    const hipX = row.hip.x;
+
     // Calculate torso angle to verify athlete is hinged over
     const torsoAngle = utils.calculateTorsoAngle(shoulderX, shoulderY, hipX, hipY);
 
@@ -115,52 +188,73 @@
       return true; // still calibrating
     }
 
-    const shoulderWristDist = Math.abs(wristY - shoulderY);
+    const shoulderTrackDist = Math.abs(trackY - shoulderY);
 
-    // Sanity check: shoulder-wrist distance should be reasonable when hinged
-    if (shoulderWristDist < 0.02 || shoulderWristDist > 0.4) {
-      if (feedbackEl) feedbackEl.textContent = "Position camera to see shoulder, hip, and wrist from the side";
+    // Sanity check: distance should be reasonable for the tracking point
+    const distMin = trackPoint === 'elbow' ? ROW.ELBOW_CAL_DIST_MIN : 0.02;
+    const distMax = trackPoint === 'elbow' ? ROW.ELBOW_CAL_DIST_MAX : 0.4;
+    if (shoulderTrackDist < distMin || shoulderTrackDist > distMax) {
+      const hint = trackPoint === 'elbow'
+        ? "Position camera to see shoulder, hip, and elbow from the side"
+        : "Position camera to see shoulder, hip, and wrist from the side";
+      if (feedbackEl) feedbackEl.textContent = hint;
       return true;
     }
 
     if (state.calibrationHipYValues.length === 0) {
-      state.calibrationHipYValues.push(wristY);
-      state.hipKneeDistance = shoulderWristDist; // reuse field for shoulder-wrist dist
-      state.standingHipX = wristX;
+      state.calibrationHipYValues.push(trackY);
+      state.hipKneeDistance = shoulderTrackDist;
+      state.standingHipX = trackX;
       state.userHeightInches = state.getUserHeight ? state.getUserHeight() : 68;
-      state.standingTorsoAngle = torsoAngle; // Store for cheat detection
-      if (feedbackEl) feedbackEl.textContent = "Hold hinged position... 1/" + C.CALIBRATION_SAMPLES;
+      state.standingTorsoAngle = torsoAngle;
+      state.rowCalibPoint = trackPoint;
+      if (feedbackEl) {
+        const label = trackPoint === 'elbow' ? 'Hold hinged position (elbow tracking)... ' : 'Hold hinged position... ';
+        feedbackEl.textContent = label + '1/' + C.CALIBRATION_SAMPLES;
+      }
       return true;
     }
 
     const recentAvg = state.calibrationHipYValues.slice(-3).reduce((a, b) => a + b, 0) /
                       Math.min(state.calibrationHipYValues.length, 3);
-    const variation = Math.abs(wristY - recentAvg);
-    const tolerance = shoulderWristDist * ROW.CALIBRATION_TOLERANCE;
+    const variation = Math.abs(trackY - recentAvg);
+    const tolerance = shoulderTrackDist * ROW.CALIBRATION_TOLERANCE;
 
     if (variation < tolerance) {
-      state.calibrationHipYValues.push(wristY);
-      state.hipKneeDistance = state.hipKneeDistance * 0.8 + shoulderWristDist * 0.2;
+      state.calibrationHipYValues.push(trackY);
+      state.hipKneeDistance = state.hipKneeDistance * 0.8 + shoulderTrackDist * 0.2;
       state.standingTorsoAngle = state.standingTorsoAngle * 0.8 + torsoAngle * 0.2;
-      if (feedbackEl) feedbackEl.textContent = `Hold hinged position... ${state.calibrationHipYValues.length}/${C.CALIBRATION_SAMPLES}`;
+      if (feedbackEl) {
+        const label = trackPoint === 'elbow' ? 'Hold hinged position (elbow tracking)... ' : 'Hold hinged position... ';
+        feedbackEl.textContent = label + state.calibrationHipYValues.length + '/' + C.CALIBRATION_SAMPLES;
+      }
 
       if (state.calibrationHipYValues.length >= C.CALIBRATION_SAMPLES) {
         state.standingHipY = state.calibrationHipYValues.reduce((a, b) => a + b, 0) / state.calibrationHipYValues.length;
-        state.standingHipX = wristX;
+        state.standingHipX = trackX;
         state.stableFrameCount = C.STABILITY_FRAMES;
         state.stableStandingStartTime = performance.now();
         state.calibrationCompletedTime = performance.now();
 
-        // Scale: use shoulder-wrist distance and height ratio
-        const expectedShoulderWristInches = state.userHeightInches * ROW.SHOULDER_WRIST_RATIO;
-        state.inchesPerUnit = expectedShoulderWristInches / state.hipKneeDistance;
+        // Scale: use SHOULDER_WRIST_RATIO regardless of tracking point.
+        // For elbow: the shorter distance produces a larger inchesPerUnit,
+        // which auto-converts elbow movement into wrist-equivalent inches.
+        const expectedInches = state.userHeightInches * ROW.SHOULDER_WRIST_RATIO;
+        state.inchesPerUnit = expectedInches / state.hipKneeDistance;
         state.isCalibrated = true;
+        state.rowCalibPoint = trackPoint;
 
-        const estimatedArmInches = utils.normToInches(state.hipKneeDistance, state);
+        // Record offset between wrist and elbow if both are visible
+        if (isVisible(row.wrist) && isVisible(row.elbow)) {
+          state.rowWristElbowOffset = row.wrist.y - row.elbow.y;
+        }
+
+        const estimatedInches = utils.normToInches(state.hipKneeDistance, state);
         const feet = Math.floor(state.userHeightInches / 12);
         const inches = state.userHeightInches % 12;
+        const trackLabel = trackPoint === 'elbow' ? ' (elbow)' : '';
 
-        if (feedbackEl) feedbackEl.textContent = `Calibrated! H:${feet}'${inches}" Arm:${estimatedArmInches.toFixed(1)}" Hinge:${torsoAngle.toFixed(0)}\u00B0`;
+        if (feedbackEl) feedbackEl.textContent = `Calibrated${trackLabel}! H:${feet}'${inches}" Arm:${estimatedInches.toFixed(1)}" Hinge:${torsoAngle.toFixed(0)}\u00B0`;
 
         setTimeout(() => {
           if (state.state === 'standing' && feedbackEl) {
@@ -186,7 +280,7 @@
     category: 'row',
     isSingleLeg: false,
     needsShoulder: true,   // Need shoulder + hip for torso angle
-    needsWrist: true,      // Need wrist for pull tracking (hybrid exercise)
+    needsWrist: true,      // Flag for upper body exercise drawing
     needsHip: true,        // Signal to drawing code: also show hip
     invertDepthMarkers: true, // Depth markers go upward from baseline
     referenceDepth: 10,    // Typical wrist travel in inches for barbell row
@@ -199,7 +293,7 @@
       { inches: ROW.DEPTH_MARKER_CHEST, color: 'rgba(0, 255, 0, 0.4)' },
     ],
 
-    cameraHint: 'Camera needs to see: Shoulder, Hip, Wrist (side view)',
+    cameraHint: 'Camera needs to see: Shoulder, Hip, Wrist or Elbow (side view)',
 
     getQuality: function(pullInches) {
       if (pullInches >= ROW.DEPTH_MARKER_CHEST) return { emoji: '+++', label: 'Chest', color: '#00FF00' };
@@ -209,7 +303,7 @@
     },
 
     detect: function(landmarks, state, ui) {
-      // Side detection using shoulder + hip + wrist
+      // Side detection using shoulder + hip + (wrist OR elbow)
       const sideResult = detectRowSide(landmarks, state);
       if (!sideResult.valid) {
         if (state.state !== 'standing' && state.trackingLossFrames > C.TRACKING_LOSS_TOLERANCE_FRAMES) {
@@ -220,29 +314,55 @@
       }
 
       const row = getRowLandmarks(landmarks, state.lockedSide);
-      const rawWristY = row.wrist.y;
-      const rawWristX = row.wrist.x;
       const shoulderY = row.shoulder.y;
       const shoulderX = row.shoulder.x;
       const hipY = row.hip.y;
       const hipX = row.hip.x;
 
-      // Process wrist position (reuse hip processing for smoothing/outlier filtering)
-      const processed = utils.processHipPosition(rawWristY, rawWristX, state);
+      // Select best tracking point (wrist preferred, elbow fallback)
+      const tracking = selectTrackingPoint(row);
+      if (!tracking) {
+        // Neither wrist nor elbow visible on the locked side
+        state.trackingLossFrames++;
+        if (state.state !== 'standing' && state.trackingLossFrames > C.TRACKING_LOSS_TOLERANCE_FRAMES) {
+          if (ui.feedback) ui.feedback.textContent = "Lost arm tracking - resetting";
+          utils.resetToStanding(state, ui.status);
+        }
+        return;
+      }
+
+      state.rowTrackingPoint = tracking.point;
+
+      // Adjust tracking Y to calibrated coordinate space if switching points
+      const rawTrackY = adjustTrackingY(tracking.y, tracking.point, state);
+      const rawTrackX = tracking.x;
+
+      // Process position (reuse hip processing for smoothing/outlier filtering)
+      const processed = utils.processHipPosition(rawTrackY, rawTrackX, state);
       if (processed.rejected && processed.hipY === null) return;
-      const wristY = processed.hipY;  // smoothed wrist Y
-      const wristX = processed.hipX;  // smoothed wrist X
+      const trackY = processed.hipY;  // smoothed tracking Y
+      const trackX = processed.hipX;  // smoothed tracking X
 
       // Auto-recalibration check
-      if (utils.checkAutoRecalibration(state, ui.feedback)) return;
+      if (utils.checkAutoRecalibration(state, ui.feedback)) {
+        state.rowCalibPoint = null;
+        state.rowWristElbowOffset = null;
+        return;
+      }
 
       // Calibration at hinged position
       if (!state.isCalibrated && state.state === 'standing') {
-        if (calibrateRowBaseline(wristY, wristX, shoulderY, shoulderX, hipY, hipX, state, ui.feedback)) return;
+        if (calibrateRowBaseline(trackY, trackX, tracking.point, row, state, ui.feedback)) return;
       }
 
-      // Velocity tracking (wrist Y)
-      utils.trackVelocity(wristY, state);
+      // After calibration, record offset if both points become visible
+      if (state.isCalibrated && state.rowWristElbowOffset === null &&
+          isVisible(row.wrist) && isVisible(row.elbow)) {
+        state.rowWristElbowOffset = row.wrist.y - row.elbow.y;
+      }
+
+      // Velocity tracking
+      utils.trackVelocity(trackY, state);
       const avgVelocity = utils.getAvgVelocity(state);
 
       // Track torso angle for cheat detection
@@ -272,18 +392,18 @@
 
       // Standing (hinged, bar hanging) stability
       if (state.state === 'standing') {
-        utils.handleStandingStability(wristY, wristX, state, ui.feedback, this.name);
+        utils.handleStandingStability(trackY, trackX, state, ui.feedback, this.name);
       }
 
-      // Track peak pull height (lowest wrist Y = highest physical pull)
+      // Track peak pull height (lowest Y = highest physical pull)
       if (state.state === 'ascending' || state.state === 'descending') {
-        if (state.deepestHipY === null || wristY < state.deepestHipY) {
-          state.deepestHipY = wristY; // lowest Y = highest pull
+        if (state.deepestHipY === null || trackY < state.deepestHipY) {
+          state.deepestHipY = trackY;
         }
       }
 
       // Pull height calculations (inverted from bench: baselineY - currentY)
-      const currentPullNorm = state.standingHipY - wristY;  // positive when wrist rises
+      const currentPullNorm = state.standingHipY - trackY;  // positive when tracking point rises
       const currentPullInches = utils.normToInches(currentPullNorm, state);
       const maxPullNorm = state.deepestHipY !== null ? state.standingHipY - state.deepestHipY : 0;
       const maxPullInches = utils.normToInches(maxPullNorm, state);
@@ -301,22 +421,23 @@
       state.debugInfo.torsoChange = torsoAngleChange.toFixed(1);
       state.debugInfo.rowState = state.state;
       state.debugInfo.cheating = isCheating ? 'YES' : 'no';
+      state.debugInfo.rowTrackPt = tracking.point;
 
       // State machine (inverted from bench: ascending first, then descending)
       switch (state.state) {
         case 'standing': {
-          // "standing" = hinged position, bar hanging at baseline (high wrist Y)
+          // "standing" = hinged position, bar hanging at baseline (high tracking Y)
           const hasBeenStable = state.stableStandingStartTime &&
             (performance.now() - state.stableStandingStartTime) >= C.MIN_STANDING_TIME_MS;
 
-          // Detect wrist moving upward (negative velocity = Y decreasing)
+          // Detect tracking point moving upward (negative velocity = Y decreasing)
           const isMovingUp = avgVelocity < -ROW.PULL_VELOCITY_MIN;
           const wellPastThreshold = currentPullNorm > pullThresholdNorm * ROW.DEPTH_TRIGGER_MULTIPLIER;
           const isPastThreshold = currentPullNorm > pullThresholdNorm + hysteresisNorm;
 
           if (isPastThreshold && hasBeenStable && (isMovingUp || wellPastThreshold)) {
             utils.updateState('ascending', state, ui.status);
-            state.deepestHipY = wristY; // track peak pull (lowest wrist Y)
+            state.deepestHipY = trackY; // track peak pull
             state.ascentStartTime = performance.now();
             state.velocityHistory = [];
             state.smoothedVelocity = 0;
@@ -336,11 +457,10 @@
           const cheatMsg = isCheating ? ' \u26A0 body english!' : '';
           if (ui.feedback) ui.feedback.textContent = `Pull ${currentPullInches.toFixed(1)}" ${pullQuality.emoji} ${pullQuality.label}${cheatMsg}`;
 
-          // Transition to descending when wrist starts moving back down (positive velocity)
+          // Transition to descending when tracking point starts moving back down
           if (state.velocityHistory.length >= C.VELOCITY_WINDOW && avgVelocity > C.VELOCITY_THRESHOLD) {
             if (maxPullInches >= ROW.MIN_PULL_INCHES) {
               utils.updateState('descending', state, ui.status);
-              // Record pull end time - concentric phase measured from ascentStart to now
               state.pullEndTime = performance.now();
               state.velocityHistory = [];
               state.smoothedVelocity = 0;
@@ -363,8 +483,8 @@
             break;
           }
 
-          // Recovery: how much the wrist has lowered from peak pull back toward baseline
-          const recovered = Math.max(0, wristY - state.deepestHipY); // wristY increasing from peak
+          // Recovery: how much the tracking point has lowered from peak back toward baseline
+          const recovered = Math.max(0, trackY - state.deepestHipY);
           const totalPull = maxPullNorm;
           const recoveryPercent = totalPull > 0 ? (recovered / totalPull) * 100 : 0;
 
@@ -449,6 +569,9 @@
       state.standingTorsoAngle = null;
       state.dlSmoothedAngle = null;
       state.pullEndTime = null;
+      state.rowTrackingPoint = null;
+      state.rowCalibPoint = null;
+      state.rowWristElbowOffset = null;
     },
   };
 

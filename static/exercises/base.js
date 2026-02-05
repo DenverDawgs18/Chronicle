@@ -119,6 +119,11 @@ Chronicle.createState = function() {
     // Stance detection (sumo vs conventional)
     detectedStance: null,   // 'conventional', 'sumo', or null
 
+    // Row elbow fallback tracking
+    rowTrackingPoint: null,       // 'wrist' or 'elbow' - current frame
+    rowCalibPoint: null,          // 'wrist' or 'elbow' - used during calibration
+    rowWristElbowOffset: null,    // wristBaselineY - elbowBaselineY (from calibration)
+
     // Debug
     debugInfo: {},
   };
