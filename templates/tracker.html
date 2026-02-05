@@ -35,12 +35,14 @@
     <div class="exercise-selector-group exercise-selector-press">
       <button class="exercise-option {{ 'active' if exercise_type == 'bench-press' else '' }}" data-exercise="bench-press" onclick="setExercise('bench-press')">Bench</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'overhead-press' else '' }}" data-exercise="overhead-press" onclick="setExercise('overhead-press')">OHP</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'general-press' else '' }}" data-exercise="general-press" onclick="setExercise('general-press')" title="Incline bench, close-grip bench, dumbbell press, push-ups, dips, etc.">Press+</button>
     </div>
     <div class="exercise-selector-group exercise-selector-row">
       <button class="exercise-option {{ 'active' if exercise_type == 'barbell-row' else '' }}" data-exercise="barbell-row" onclick="setExercise('barbell-row')" title="Barbell Row">BB Row</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'dumbbell-row' else '' }}" data-exercise="dumbbell-row" onclick="setExercise('dumbbell-row')" title="Single-arm Dumbbell Row">DB Row</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'pendlay-row' else '' }}" data-exercise="pendlay-row" onclick="setExercise('pendlay-row')" title="Dead-stop Pendlay Row">Pendlay</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'cable-row' else '' }}" data-exercise="cable-row" onclick="setExercise('cable-row')" title="Standing Cable Row / Low Row">Cable</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'general-pull' else '' }}" data-exercise="general-pull" onclick="setExercise('general-pull')" title="Pull-ups, lat pulldowns, face pulls, cable pulls, etc.">Pull+</button>
     </div>
   </div>
   <span id="setCounter" class="set-counter">Set 1</span>
@@ -118,11 +120,13 @@
   <script src="{{ url_for('static', filename='exercises/general-hinge.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/bench-press.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/overhead-press.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/general-press.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/row-base.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/barbell-row.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/dumbbell-row.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/pendlay-row.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/cable-row.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/general-pull.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/registry.js') }}"></script>
   <script src="{{ url_for('static', filename='squat.js') }}"></script>
 </body>
