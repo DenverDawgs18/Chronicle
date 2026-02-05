@@ -452,6 +452,9 @@ def tracker():
         'bench-press': 'Bench Press',
         'overhead-press': 'Overhead Press',
         'barbell-row': 'Barbell Row',
+        'dumbbell-row': 'Dumbbell Row',
+        'pendlay-row': 'Pendlay Row',
+        'cable-row': 'Cable Row',
     }
     if exercise_type not in valid_exercises:
         exercise_type = 'squat'
