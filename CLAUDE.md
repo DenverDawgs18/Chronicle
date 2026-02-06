@@ -2,15 +2,17 @@
 
 ## Project Overview
 
-Chronicle is a **Velocity-Based Training (VBT) web application** that enables real-time squat tracking using only a smartphone camera. It delivers professional-grade performance metrics without expensive sensor hardware by leveraging MediaPipe for pose detection.
+Chronicle is a **Velocity-Based Training (VBT) web application** that enables real-time exercise tracking using only a smartphone camera. It delivers professional-grade performance metrics without expensive sensor hardware by leveraging MediaPipe for pose detection. It supports **19 exercise types** across squats, hinges, presses, and rows.
 
 ### Key Value Proposition
-- Phone camera-powered squat tracking (no sensors required)
+- Phone camera-powered exercise tracking (no sensors required)
 - Real-time velocity feedback for athletes
-- Objective squat depth measurement
-- Speed score calculations for strength training
+- Objective depth measurement across multiple exercise categories
+- Speed score calculations normalized across exercise types
 - **Workout tracking dashboard** with set/rep history and analytics
 - Real-time sync between tracker and dashboard via BroadcastChannel
+- **Coach system** with athlete management, invitations, and program creation
+- **Training programs** with day/exercise structure and set logging
 
 ## Tech Stack
 
@@ -44,21 +46,26 @@ Chronicle/
 ├── Dockerfile                  # Docker configuration
 ├── fly.toml                    # Fly.io deployment config
 ├── map.md                      # Project roadmap/notes
+├── jest.config.js              # Jest testing configuration
+├── package.json                # NPM dependencies (Jest)
 ├── .github/
 │   └── workflows/
 │       └── fly-deploy.yml      # Auto-deploy workflow
 ├── templates/                  # Jinja2 HTML templates
+│   ├── base.html               # Base template with shared layout
+│   ├── macros.html             # Jinja2 reusable macros
 │   ├── index.html              # Landing page
 │   ├── login.html              # Login/register page
-│   ├── tracker.html            # Main squat tracking interface
+│   ├── tracker.html            # Main exercise tracking interface
 │   ├── dashboard.html          # Workout history and analytics dashboard
 │   ├── subscribe.html          # Pricing/subscription page
 │   ├── code.html               # Access code redemption
 │   ├── setup_password.html     # Post-payment password setup
 │   ├── coach_dashboard.html    # Coach dashboard for athlete management
+│   ├── join.html               # Coach invite acceptance page
 │   └── programs.html           # Training programs page
 ├── static/                     # Frontend assets
-│   ├── squat.js                # Core tracking logic + workout integration
+│   ├── squat.js                # Main orchestrator: camera, MediaPipe, workout tracking
 │   ├── dashboard.js            # Dashboard logic, API calls, real-time sync
 │   ├── login.js                # Auth form handling
 │   ├── coach_dashboard.js      # Coach dashboard logic
@@ -71,7 +78,36 @@ Chronicle/
 │   ├── tracker.css             # Tracker UI styles
 │   ├── dashboard.css           # Dashboard glassmorphism styles
 │   ├── code.css                # Access code page styles
-│   └── subscribe.css           # Subscription page styles
+│   ├── subscribe.css           # Subscription page styles
+│   ├── exercises/              # Modular exercise detection system
+│   │   ├── base.js             # Shared constants, state, utilities, calibration
+│   │   ├── registry.js         # Exercise registry for dynamic loading
+│   │   ├── squat.js            # Back squat detection
+│   │   ├── deadlift.js         # Conventional/sumo deadlift
+│   │   ├── rdl.js              # Romanian deadlift
+│   │   ├── single-leg-rdl.js   # Single-leg RDL
+│   │   ├── hack-squat.js       # Hack squat
+│   │   ├── bulgarian-squat.js  # Bulgarian split squat
+│   │   ├── split-squat.js      # Split squat
+│   │   ├── general-squat.js    # General squat variant
+│   │   ├── general-lunge.js    # General lunge
+│   │   ├── general-hinge.js    # General hinge movement
+│   │   ├── bench-press.js      # Flat bench press
+│   │   ├── overhead-press.js   # Overhead press
+│   │   ├── dips.js             # Dips
+│   │   ├── general-press.js    # General press variant
+│   │   ├── barbell-row.js      # Barbell row
+│   │   ├── dumbbell-row.js     # Dumbbell row
+│   │   ├── pendlay-row.js      # Pendlay row
+│   │   ├── cable-row.js        # Cable row
+│   │   ├── general-pull.js     # General pull variant
+│   │   └── row-base.js         # Shared row detection logic
+│   └── tests/                  # Frontend test suite
+│       ├── test-runner.html    # Browser-based test runner
+│       ├── test-base.js        # Tests for base module
+│       ├── test-exercises.js   # Tests for exercise modules
+│       ├── test-helpers.js     # Test utility functions
+│       └── run-node.js         # Node.js test runner (Jest)
 ├── migrations/                 # Alembic database migrations
 │   ├── env.py
 │   ├── alembic.ini
@@ -85,13 +121,17 @@ Chronicle/
 | File | Purpose |
 |------|---------|
 | `app.py` | All Flask routes, database models, Stripe webhooks |
-| `static/squat.js` | MediaPipe pose detection, squat state machine, velocity calculations, workout integration |
+| `static/squat.js` | Main orchestrator: MediaPipe, camera, canvas, workout tracking; delegates detection to exercise modules |
+| `static/exercises/base.js` | Chronicle namespace, shared constants (`Chronicle.CONSTANTS`), state factory (`Chronicle.createState`), utility functions |
+| `static/exercises/registry.js` | Exercise registry (`Chronicle.registry`) for dynamic exercise module lookup |
+| `static/exercises/*.js` | Individual exercise detection modules (19 exercises across 4 categories) |
 | `static/dashboard.js` | Dashboard logic, workout/set APIs, real-time BroadcastChannel sync, customizable metrics |
-| `static/coach_dashboard.js` | Coach athlete management, program creation |
+| `static/coach_dashboard.js` | Coach athlete management, invitations, program creation |
 | `static/programs.js` | Training programs CRUD, exercise logging, velocity tracking integration |
 | `templates/tracker.html` | Main UI with video canvas, controls, and save set functionality |
 | `templates/dashboard.html` | Workout history, stats overview, customizable lift metrics |
-| `templates/coach_dashboard.html` | Coach dashboard for managing athletes |
+| `templates/coach_dashboard.html` | Coach dashboard for managing athletes and invitations |
+| `templates/join.html` | Coach invite acceptance page for athletes |
 | `templates/programs.html` | Training programs view and editor |
 | `fly.toml` | Deployment configuration for Fly.io |
 
@@ -225,6 +265,21 @@ ProgramSetLog:
   - completed_at: DateTime
 ```
 
+### CoachInvite Model
+```python
+CoachInvite:
+  - id: Integer (primary key)
+  - coach_id: Integer (FK to User)
+  - email: String (email to invite)
+  - token: String (unique invite token)
+  - status: String ('pending', 'accepted', 'expired')
+  - created_at: DateTime
+  - accepted_at: DateTime
+  - athlete_id: Integer (FK to User, set when accepted)
+  - Relationships: coach, athlete
+  - Methods: to_dict() returns invite data
+```
+
 ## API Routes
 
 ### Public Routes
@@ -247,6 +302,7 @@ ProgramSetLog:
 | `/setup-password` | GET/POST | Password setup for new users |
 | `/set_height` | POST | Update user height (JSON API) |
 | `/api/subscription-status` | GET | Check subscription (JSON API) |
+| `/tests` | GET | Frontend test runner page (development) |
 
 ### Workout API Routes (JSON)
 | Route | Method | Purpose |
@@ -271,6 +327,11 @@ ProgramSetLog:
 | `/api/coach/athletes/<id>` | GET | Get detailed athlete info |
 | `/api/coach/add-athlete` | POST | Add athlete by email |
 | `/api/coach/remove-athlete/<id>` | DELETE | Remove athlete from coach |
+| `/api/coach/invites` | GET | List all invitations sent by coach |
+| `/api/coach/invite` | POST | Create new coach invite (sends token link) |
+| `/api/coach/invites/<id>` | DELETE | Delete/cancel an invitation |
+| `/join/<token>` | GET | Public invite acceptance page |
+| `/join/<token>` | POST | Process athlete registration via invite |
 
 ### Program API Routes (JSON)
 | Route | Method | Purpose |
@@ -309,41 +370,94 @@ STRIPE_WEBHOOK_SECRET   # Webhook signature verification
 STRIPE_MONTHLY_LINK     # Stripe Payment Link for monthly plan
 STRIPE_ANNUAL_LINK      # Stripe Payment Link for annual plan
 ACCESS_CODE             # Code for granting lifetime access
+COACH_CODE              # Code for granting coach access
 ```
 
-## Squat Detection Algorithm
+## Modular Exercise Detection System
 
-The `squat.js` file implements a state machine with key hyperparameters:
+Exercise detection uses a modular architecture under `static/exercises/`. The main orchestrator (`static/squat.js`) delegates detection to exercise-specific modules via the `Chronicle` namespace.
+
+### Architecture
+
+```
+Chronicle (global namespace)
+├── Chronicle.CONSTANTS      # Shared hyperparameters
+├── Chronicle.createState()  # State factory (returns fresh state object)
+├── Chronicle.utils          # Shared utilities (calibration, speed score, side detection, etc.)
+├── Chronicle.exercises      # Map of exercise key → module
+└── Chronicle.registry       # Registry API for exercise lookup
+```
+
+### Exercise Modules
+
+Each exercise module in `static/exercises/*.js` registers itself as `Chronicle.exercises[key]` with:
+- `name` - Display name
+- `sessionName` - Workout session name
+- `category` - Exercise category ('squat', 'hinge', 'press', 'pull')
+- `needsWrist` - Boolean, true for upper body exercises
+- `needsHip` - Boolean, true for lower body exercises
+- `isSingleLeg` - Boolean, for single-leg variants
+- `referenceDepth` - Expected ROM in inches (for speed score normalization)
+- `detect(landmarks, state, ui)` - Main detection function called each frame
+- `getQuality(depthInches)` - Returns depth quality label
+- `reset(state)` - Resets exercise-specific state
+
+### Supported Exercises (19 total)
+
+| Category | Exercises |
+|----------|-----------|
+| Squat | squat, hack-squat, bulgarian-squat, split-squat, general-squat, general-lunge |
+| Hinge | deadlift, rdl, single-leg-rdl, general-hinge |
+| Press | bench-press, overhead-press, dips, general-press |
+| Pull | barbell-row, dumbbell-row, pendlay-row, cable-row, general-pull |
+
+### Shared Constants (`Chronicle.CONSTANTS`)
 
 ```javascript
-// Depth thresholds
-MIN_DEPTH_INCHES = 6           // Minimum for valid rep
-DEPTH_MARKER_HALF = 6          // Half squat
-DEPTH_MARKER_PARALLEL = 15.5   // Parallel depth
-DEPTH_MARKER_DEEP = 17.5       // Deep squat
-
 // Calibration
-CALIBRATION_SAMPLES = 5
-CALIBRATION_TOLERANCE_MULTIPLIER = 0.12
-RECALIBRATION_TIMEOUT_MS = 8000
+CALIBRATION_SAMPLES: 5
+CALIBRATION_TOLERANCE_MULTIPLIER: 0.12
+RECALIBRATION_TIMEOUT_MS: 8000
 
-// State machine
-DESCENT_THRESHOLD_INCHES = 3.5
-RECOVERY_PERCENT = 80
-VELOCITY_THRESHOLD = 0.001
+// Position smoothing
+POSITION_SMOOTHING_ALPHA: 0.5
+OUTLIER_THRESHOLD_MULTIPLIER: 6.0
+VELOCITY_EMA_ALPHA: 0.4
+
+// Speed score
+SPEED_SCORE_MULTIPLIER: 1000
+STANDARD_REFERENCE_DEPTH: 15    // Back squat parallel depth (normalization baseline)
+
+// State timeouts
+MAX_DESCENT_TIME_MS: 6000
+MAX_ASCENT_TIME_MS: 6000
+
+// Standing / drift
+HORIZONTAL_MOVEMENT_THRESHOLD: 0.08
+VELOCITY_THRESHOLD: 0.001
 ```
 
-### State Flow
+### State Flow (Lower Body)
 ```
 standing → descending → ascending → (rep counted) → standing
 ```
 
+### State Flow (Upper Body - Press)
+```
+lockout → descending → ascending → lockout (rep counted)
+```
+
 ### Key Detection Features
-- Hip-knee joint tracking for depth measurement
+- Hip-knee joint tracking for lower body depth measurement
+- Wrist-elbow-shoulder tracking for upper body exercises
+- Torso angle tracking for hinge movements
 - Automatic side detection (left/right body side)
-- Velocity-based rep timing
+- Single-leg variant support with per-side rep counting
+- Stance detection (conventional vs sumo for deadlifts)
+- Speed score normalization across exercise types via `referenceDepth`
 - Horizontal drift detection
 - Auto-recalibration after inactivity
+- Row elbow fallback tracking when wrists aren't visible
 
 ## Workout Tracking Dashboard
 
@@ -356,7 +470,8 @@ The dashboard provides workout history tracking and analytics with real-time syn
 - **Set Metrics**: Reps, average depth, average speed, fatigue drop percentage
 
 ### Tracker Integration
-Key functions added to `squat.js` for workout persistence:
+Key functions in `squat.js` (main orchestrator) for workout persistence:
+- `initExerciseState()` - Initializes `Chronicle.createState()` and loads exercise module via `Chronicle.registry`
 - `initWorkout()` - Fetches/creates current workout on page load
 - `recordRep(time, depth, velocity, quality)` - Stores rep data during set
 - `saveSet()` - POSTs completed set to API, broadcasts to dashboard
@@ -437,10 +552,12 @@ fly deploy
 
 ### JavaScript
 - Vanilla JS, no frameworks
-- Constants in SCREAMING_SNAKE_CASE
+- Modular exercise system via `Chronicle` global namespace
+- Constants centralized in `Chronicle.CONSTANTS` (SCREAMING_SNAKE_CASE)
 - Debug mode toggle via `DEBUG_MODE = true`
 - State machine pattern for tracking logic
 - Canvas-based visualization
+- Exercise modules self-register on `Chronicle.exercises`
 
 ### CSS
 - Glassmorphism design with blur effects
@@ -469,13 +586,26 @@ def new_route():
 2. Create template in `templates/new_route.html`
 3. Add styles in `static/new_route.css`
 
-### Modifying Squat Detection
+### Modifying Exercise Detection
 
-Key functions in `squat.js`:
-- `detectSquat(landmarks)` - Main detection logic
-- `updateStatus(newState)` - State transitions
-- `resetToStanding()` - Reset tracking state
-- `calculateSpeedScore()` - Velocity calculations
+Exercise detection is modular. To modify an exercise, edit its module in `static/exercises/`:
+
+**Key files:**
+- `static/exercises/base.js` - Shared constants (`Chronicle.CONSTANTS`), state (`Chronicle.createState`), utilities (`Chronicle.utils`)
+- `static/exercises/<exercise>.js` - Exercise-specific `detect()`, `getQuality()`, `reset()` methods
+- `static/exercises/registry.js` - Registry for exercise lookup
+- `static/squat.js` - Main orchestrator (camera, MediaPipe, canvas, workout tracking)
+
+**Key utility functions in `Chronicle.utils`:**
+- `detectSide(landmarks)` - Automatic left/right side detection
+- `processHipPosition(landmarks, state)` - Hip tracking and smoothing
+- `calibrateHipBaseline(state)` - Standing baseline calibration
+- `calculateSpeedScore(time, depth, referenceDepth)` - Normalized velocity scoring
+- `calculateTorsoAngle(shoulderX, shoulderY, hipX, hipY)` - Torso angle for hinges
+- `calculateKneeAngle(...)` - Knee angle calculation
+
+**Orchestrator functions in `squat.js`:**
+- `initExerciseState()` - Load exercise module and create state
 - `initWorkout()` - Initialize/fetch current workout
 - `recordRep()` - Store rep data for set saving
 - `saveSet()` - Save completed set to API
@@ -494,56 +624,42 @@ stripe listen --forward-to localhost:5000/webhook
 ## Known Issues / Roadmap
 
 From `map.md`:
-- Squat tracking fixes
-- Merging CSS
-- Improve onboarding speed
-- Writing tests
-- Simplifying HTML where possible (Jinja?)
+- Simulator -- sideways
+- More robust simulator controls or just a better understanding on how to change it
+- UI overhaul
+- Check knees from caving in, torso angle, and shin angle
 
-## Upper Body Tracking Roadmap
+## Exercise Tracking by Category
 
-Upper body exercises use **wrist and elbow landmarks** from MediaPipe rather than the hip/knee tracking used for lower body. The camera should be positioned from the side so that the full arm path is visible.
-
-### MediaPipe Landmarks for Upper Body
+### MediaPipe Landmarks Used
 | Landmark Index | Name | Use |
 |----------------|------|-----|
-| 11 / 12 | Left / Right Shoulder | Shoulder position baseline |
-| 13 / 14 | Left / Right Elbow | Elbow angle for depth quality |
-| 15 / 16 | Left / Right Wrist | Bar/hand path tracking (primary metric) |
+| 11 / 12 | Left / Right Shoulder | Shoulder position, torso angle |
+| 13 / 14 | Left / Right Elbow | Elbow angle for press/row depth |
+| 15 / 16 | Left / Right Wrist | Bar/hand path tracking (upper body) |
+| 23 / 24 | Left / Right Hip | Hip tracking (lower body primary metric) |
+| 25 / 26 | Left / Right Knee | Knee angle, depth reference |
+| 27 / 28 | Left / Right Ankle | Stance width detection |
 
-### Phase 1: Flat Bench Press (Implemented)
-- **Detection method**: Track wrist Y position as the bar descends and ascends
-- **Calibration**: Wrist position at lockout (arms extended) establishes the baseline
-- **Depth quality**: Based on how far the wrist descends (elbow angle proxy)
-  - Deep (wrist near/below shoulder level)
-  - Parallel (90-degree elbow angle zone)
-  - Partial (above parallel)
-- **Speed score**: Concentric phase velocity, normalized with `referenceDepth: 10` (inches of wrist travel)
-- **Camera setup**: Side view, camera needs to see shoulder, elbow, and wrist
-- **State machine**: `lockout → descending → ascending → lockout (rep counted)`
+### Lower Body (Hip Tracking)
+- **Squats**: Track hip Y position descent from standing baseline
+- **Hinges** (deadlift, RDL): Track torso angle + hip position
+- **Single-leg**: Per-side rep counting with working leg detection
+- **State machine**: `standing → descending → ascending → standing`
 
-### Phase 2: Overhead Press (Planned)
-- Track wrist Y position overhead
-- Calibration at bottom position (bar at shoulder height)
-- Depth/quality based on lockout completeness overhead
-- Detect strict press vs push press via knee movement
-- Camera setup: Side view, needs shoulder + wrist + elbow visible
-
-### Phase 3: Barbell Row (Planned)
-- Track torso angle (like deadlift) + wrist position
-- Calibration in hinged-over position
-- Quality based on how close wrist reaches the torso
-- Detect cheating via torso angle change during pull
-- Camera setup: Side view, needs shoulder + hip + wrist visible
-
-### Phase 4: Additional Upper Body (Planned)
-- **Incline Bench Press**: Variant of flat bench with adjusted angle thresholds
-- **Close-Grip Bench**: Same detection as flat bench, different exercise label
-- **Push-ups**: Wrist/shoulder tracking with body horizontal
+### Upper Body - Press (Wrist Tracking) - Implemented
+- **Bench Press**: Track wrist Y position descent/ascent; `lockout → descending → ascending → lockout`
+- **Overhead Press**: Track wrist Y position overhead
 - **Dips**: Shoulder/elbow tracking in vertical plane
+- **Speed score**: Normalized with exercise-specific `referenceDepth` (inches of wrist travel)
+- **Camera setup**: Side view, needs shoulder + elbow + wrist visible
+
+### Upper Body - Pull/Row (Wrist/Elbow Tracking) - Implemented
+- **Row variants**: Track wrist/elbow position relative to torso in hinged position
+- **Elbow fallback**: When wrists aren't visible, tracks elbow with calibrated offset
+- **Camera setup**: Side view, needs shoulder + hip + wrist visible
 
 ### Camera Visibility Requirements
-Each exercise category requires specific body parts to be visible:
 | Category | Required Landmarks | Camera Position |
 |----------|-------------------|-----------------|
 | Squat variations | Hip, Knee | Side view |
@@ -551,6 +667,24 @@ Each exercise category requires specific body parts to be visible:
 | Bench Press | Shoulder, Elbow, Wrist | Side view (from head or foot of bench) |
 | Overhead Press | Shoulder, Elbow, Wrist | Side view |
 | Row | Shoulder, Hip, Wrist | Side view |
+
+## Testing
+
+### Frontend Tests (Jest)
+```bash
+# Run all frontend tests
+npx jest
+
+# Run specific test file
+npx jest static/tests/test-base.js
+```
+
+Test files are in `static/tests/`:
+- `test-base.js` - Tests for the base exercise module
+- `test-exercises.js` - Tests for individual exercise modules
+- `test-helpers.js` - Shared test utilities
+- `run-node.js` - Node.js test runner
+- `test-runner.html` - Browser-based test runner (accessible at `/tests` in dev)
 
 ## Security Notes
 
