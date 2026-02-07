@@ -348,6 +348,8 @@ def coach_required(f):
 
 @app.template_filter('format_height')
 def format_height(height):
+    if height is None:
+        height = 58
     feet = height // 12
     inches = height % 12
     return f"{feet}'{inches}\""
@@ -464,7 +466,7 @@ def tracker():
     }
     if exercise_type not in valid_exercises:
         exercise_type = 'squat'
-    return render_template('tracker.html', height=current_user.height,
+    return render_template('tracker.html', height=current_user.height or 58,
                          exercise_type=exercise_type,
                          exercise_name=valid_exercises[exercise_type])
 
@@ -1634,20 +1636,36 @@ def delete_rep_from_set(set_id, rep_id):
     workout_set.reps_completed = max(0, workout_set.reps_completed - 1)
     db.session.commit()
 
-    # Recalculate averages
+    # Recalculate averages and renumber reps
     reps = workout_set.reps.all()
     if reps:
+        # Renumber reps sequentially after deletion
+        for i, r in enumerate(reps):
+            r.rep_number = i + 1
+
         depths = [r.depth for r in reps if r.depth]
         velocities = [r.velocity for r in reps if r.velocity]
         workout_set.avg_depth = sum(depths) / len(depths) if depths else None
         workout_set.avg_velocity = sum(velocities) / len(velocities) if velocities else None
         workout_set.min_velocity = min(velocities) if velocities else None
         workout_set.max_velocity = max(velocities) if velocities else None
+
+        # Recalculate fatigue drop
+        if len(velocities) >= 2:
+            first_velocity = reps[0].velocity
+            last_velocity = reps[-1].velocity
+            if first_velocity and last_velocity and first_velocity > 0:
+                workout_set.fatigue_drop = round(((first_velocity - last_velocity) / first_velocity) * 100, 1)
+            else:
+                workout_set.fatigue_drop = None
+        else:
+            workout_set.fatigue_drop = None
     else:
         workout_set.avg_depth = None
         workout_set.avg_velocity = None
         workout_set.min_velocity = None
         workout_set.max_velocity = None
+        workout_set.fatigue_drop = None
 
     db.session.commit()
 

@@ -186,39 +186,61 @@ function renderCurrentSets() {
   const depthLabel = isHinge ? 'ROM' : 'Avg Depth';
 
   currentSetsEl.innerHTML = currentWorkout.sets.map(set => `
-    <div class="set-card" data-set-id="${set.id}">
-      <div class="set-number">${set.set_number}</div>
-      <div class="set-metrics">
-        <div class="set-metric">
-          <span class="metric-value">${set.reps_completed}</span>
-          <span class="metric-label">Reps</span>
+    <div class="set-card-wrapper" data-set-id="${set.id}">
+      <div class="set-card" onclick="toggleSetReps(${set.id})">
+        <div class="set-number">${set.set_number}</div>
+        <div class="set-metrics">
+          <div class="set-metric">
+            <span class="metric-value">${set.reps_completed}</span>
+            <span class="metric-label">Reps</span>
+          </div>
+          ${set.avg_depth ? `
+            <div class="set-metric">
+              <span class="metric-value">${set.avg_depth}"</span>
+              <span class="metric-label">${depthLabel}</span>
+            </div>
+          ` : ''}
+          ${set.avg_velocity ? `
+            <div class="set-metric">
+              <span class="metric-value">${set.avg_velocity}</span>
+              <span class="metric-label">Avg Speed</span>
+            </div>
+          ` : ''}
+          ${set.fatigue_drop ? `
+            <div class="set-metric">
+              <span class="metric-value ${set.fatigue_drop > 20 ? 'text-warning' : ''}">${set.fatigue_drop}%</span>
+              <span class="metric-label">Fatigue</span>
+            </div>
+          ` : ''}
         </div>
-        ${set.avg_depth ? `
-          <div class="set-metric">
-            <span class="metric-value">${set.avg_depth}"</span>
-            <span class="metric-label">${depthLabel}</span>
-          </div>
-        ` : ''}
-        ${set.avg_velocity ? `
-          <div class="set-metric">
-            <span class="metric-value">${set.avg_velocity}</span>
-            <span class="metric-label">Avg Speed</span>
-          </div>
-        ` : ''}
-        ${set.fatigue_drop ? `
-          <div class="set-metric">
-            <span class="metric-value ${set.fatigue_drop > 20 ? 'text-warning' : ''}">${set.fatigue_drop}%</span>
-            <span class="metric-label">Fatigue</span>
-          </div>
-        ` : ''}
+        <div class="set-actions" onclick="event.stopPropagation()">
+          <button class="btn-icon delete" onclick="deleteSet(${currentWorkout.id}, ${set.id})" title="Delete set">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+            </svg>
+          </button>
+        </div>
       </div>
-      <div class="set-actions">
-        <button class="btn-icon delete" onclick="deleteSet(${currentWorkout.id}, ${set.id})" title="Delete set">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-          </svg>
-        </button>
-      </div>
+      ${set.reps && set.reps.length > 0 ? `
+        <div class="set-reps-detail">
+          ${set.reps.map(rep => `
+            <div class="rep-row">
+              <span class="rep-number">Rep ${rep.rep_number}</span>
+              <div class="rep-metrics">
+                ${rep.depth ? `<span class="rep-metric">${rep.depth}"</span>` : ''}
+                ${rep.velocity ? `<span class="rep-metric">Speed: ${rep.velocity}</span>` : ''}
+                ${rep.time_seconds ? `<span class="rep-metric">${rep.time_seconds}s</span>` : ''}
+                ${rep.quality ? `<span class="rep-quality rep-quality-${rep.quality}">${rep.quality}</span>` : ''}
+              </div>
+              <button class="btn-icon delete btn-delete-rep" onclick="event.stopPropagation(); deleteRep(${set.id}, ${rep.id})" title="Delete rep">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
     </div>
   `).join('');
 }
@@ -586,10 +608,30 @@ async function saveMetrics() {
   }
 }
 
+function toggleSetReps(setId) {
+  const wrapper = document.querySelector(`.set-card-wrapper[data-set-id="${setId}"]`);
+  if (wrapper) {
+    wrapper.classList.toggle('expanded');
+  }
+}
+
+async function deleteRep(setId, repId) {
+  const data = await api(`/api/sets/${setId}/reps/${repId}`, {
+    method: 'DELETE'
+  });
+
+  if (data.success) {
+    await loadCurrentWorkout();
+    loadStats();
+  }
+}
+
 // Expose functions to global scope for onclick handlers
 window.toggleWorkoutDetails = toggleWorkoutDetails;
 window.showDeleteModal = showDeleteModal;
 window.deleteSet = deleteSet;
+window.toggleSetReps = toggleSetReps;
+window.deleteRep = deleteRep;
 
 // Listen for set additions from the tracker (via localStorage or BroadcastChannel)
 const channel = new BroadcastChannel('chronicle-workout');

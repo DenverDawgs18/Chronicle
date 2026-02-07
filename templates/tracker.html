@@ -13,8 +13,14 @@
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <path d="M19 12H5M12 19l-7-7 7-7"/>
     </svg>
-    Dashboard
+    <span>Dashboard</span>
   </a>
+  <button id="mobileExerciseToggle" class="mobile-exercise-toggle" onclick="toggleMobileExercisePanel()">
+    <span id="mobileExerciseName">{{ exercise_name }}</span>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M6 9l6 6 6-6"/>
+    </svg>
+  </button>
   <div class="exercise-selector">
     <div class="exercise-selector-group">
       <button class="exercise-option {{ 'active' if exercise_type == 'squat' else '' }}" data-exercise="squat" onclick="setExercise('squat')">Squat</button>
@@ -49,6 +55,39 @@
   <span id="setCounter" class="set-counter">Set 1</span>
   <span id="programExerciseIndicator" class="program-indicator hidden"></span>
 </nav>
+<div id="mobileExercisePanel" class="mobile-exercise-panel">
+  <div class="mobile-exercise-panel-content">
+    <div class="exercise-selector-group">
+      <button class="exercise-option {{ 'active' if exercise_type == 'squat' else '' }}" data-exercise="squat" onclick="setExercise('squat')">Squat</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'hack-squat' else '' }}" data-exercise="hack-squat" onclick="setExercise('hack-squat')">Hack</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'bulgarian-squat' else '' }}" data-exercise="bulgarian-squat" onclick="setExercise('bulgarian-squat')">Bulgarian</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'split-squat' else '' }}" data-exercise="split-squat" onclick="setExercise('split-squat')">Split</button>
+    </div>
+    <div class="exercise-selector-group">
+      <button class="exercise-option {{ 'active' if exercise_type == 'deadlift' else '' }}" data-exercise="deadlift" onclick="setExercise('deadlift')">Deadlift</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'rdl' else '' }}" data-exercise="rdl" onclick="setExercise('rdl')">RDL</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'single-leg-rdl' else '' }}" data-exercise="single-leg-rdl" onclick="setExercise('single-leg-rdl')">SL-RDL</button>
+    </div>
+    <div class="exercise-selector-group">
+      <button class="exercise-option {{ 'active' if exercise_type == 'general-squat' else '' }}" data-exercise="general-squat" onclick="setExercise('general-squat')">Squat+</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'general-lunge' else '' }}" data-exercise="general-lunge" onclick="setExercise('general-lunge')">Lunge+</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'general-hinge' else '' }}" data-exercise="general-hinge" onclick="setExercise('general-hinge')">Hinge+</button>
+    </div>
+    <div class="exercise-selector-group">
+      <button class="exercise-option {{ 'active' if exercise_type == 'bench-press' else '' }}" data-exercise="bench-press" onclick="setExercise('bench-press')">Bench</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'overhead-press' else '' }}" data-exercise="overhead-press" onclick="setExercise('overhead-press')">OHP</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'dips' else '' }}" data-exercise="dips" onclick="setExercise('dips')">Dips</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'general-press' else '' }}" data-exercise="general-press" onclick="setExercise('general-press')">Press+</button>
+    </div>
+    <div class="exercise-selector-group">
+      <button class="exercise-option {{ 'active' if exercise_type == 'barbell-row' else '' }}" data-exercise="barbell-row" onclick="setExercise('barbell-row')">BB Row</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'dumbbell-row' else '' }}" data-exercise="dumbbell-row" onclick="setExercise('dumbbell-row')">DB Row</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'pendlay-row' else '' }}" data-exercise="pendlay-row" onclick="setExercise('pendlay-row')">Pendlay</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'cable-row' else '' }}" data-exercise="cable-row" onclick="setExercise('cable-row')">Cable</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'general-pull' else '' }}" data-exercise="general-pull" onclick="setExercise('general-pull')">Pull+</button>
+    </div>
+  </div>
+</div>
 <div id="video-container">
     <video id="video" playsinline autoplay muted></video>
     <canvas id="canvas" width="640" height="480"></canvas>
@@ -89,6 +128,12 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.1/camera_utils.js"></script>
 
   <script>
+    // Mobile exercise panel toggle
+    function toggleMobileExercisePanel() {
+      const panel = document.getElementById('mobileExercisePanel');
+      if (panel) panel.classList.toggle('open');
+    }
+
     // Height slider functionality
     const heightSlider = document.getElementById('heightSlider');
     const heightValue = document.getElementById('heightValue');
