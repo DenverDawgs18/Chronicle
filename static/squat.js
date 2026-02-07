@@ -878,6 +878,12 @@ function setExercise(exercise) {
     btn.classList.toggle('active', btn.dataset.exercise === exercise);
   });
 
+  // Update mobile exercise toggle label and close panel
+  const mobileNameEl = document.getElementById('mobileExerciseName');
+  if (mobileNameEl) mobileNameEl.textContent = exerciseModule.name;
+  const mobilePanel = document.getElementById('mobileExercisePanel');
+  if (mobilePanel) mobilePanel.classList.remove('open');
+
   // Update page title
   document.title = `Chronicle - ${exerciseModule.name} Tracker`;
 
