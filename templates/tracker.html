@@ -42,6 +42,7 @@
       <button class="exercise-option {{ 'active' if exercise_type == 'bench-press' else '' }}" data-exercise="bench-press" onclick="setExercise('bench-press')">Bench</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'overhead-press' else '' }}" data-exercise="overhead-press" onclick="setExercise('overhead-press')">OHP</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'dips' else '' }}" data-exercise="dips" onclick="setExercise('dips')">Dips</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'kneeling-press' else '' }}" data-exercise="kneeling-press" onclick="setExercise('kneeling-press')" title="Kneeling OHP, Z-press, landmine press, seated OHP, etc.">Kneel</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'general-press' else '' }}" data-exercise="general-press" onclick="setExercise('general-press')" title="Incline bench, close-grip bench, dumbbell press, push-ups, etc.">Press+</button>
     </div>
     <div class="exercise-selector-group exercise-selector-row">
@@ -77,6 +78,7 @@
       <button class="exercise-option {{ 'active' if exercise_type == 'bench-press' else '' }}" data-exercise="bench-press" onclick="setExercise('bench-press')">Bench</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'overhead-press' else '' }}" data-exercise="overhead-press" onclick="setExercise('overhead-press')">OHP</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'dips' else '' }}" data-exercise="dips" onclick="setExercise('dips')">Dips</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'kneeling-press' else '' }}" data-exercise="kneeling-press" onclick="setExercise('kneeling-press')">Kneel</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'general-press' else '' }}" data-exercise="general-press" onclick="setExercise('general-press')">Press+</button>
     </div>
     <div class="exercise-selector-group">
@@ -177,6 +179,7 @@
   <script src="{{ url_for('static', filename='exercises/bench-press.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/overhead-press.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/dips.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/kneeling-press.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/general-press.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/row-base.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/barbell-row.js') }}"></script>

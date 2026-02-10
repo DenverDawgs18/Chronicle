@@ -10,21 +10,21 @@
 
   // OHP-specific hyperparameters
   const OHP = {
-    MIN_DEPTH_INCHES: 4,           // Minimum wrist travel for valid rep (lowered for kneeling/SARM variants)
-    DESCENT_THRESHOLD_INCHES: 2,   // Wrist drop to trigger descent state
-    RECOVERY_PERCENT: 76,          // % recovery to count rep (forgiving for press variations)
-    DESCENT_VELOCITY_MIN: 0.0008,  // Minimum downward velocity for descent
+    MIN_DEPTH_INCHES: 6,           // Minimum wrist travel for valid rep
+    DESCENT_THRESHOLD_INCHES: 3,   // Wrist drop to trigger descent state
+    RECOVERY_PERCENT: 80,          // % recovery to count rep
+    DESCENT_VELOCITY_MIN: 0.0010,  // Minimum downward velocity for descent
     DEPTH_TRIGGER_MULTIPLIER: 1.5, // Multiplier for well-past-threshold check
-    RECOVERY_WARNING_THRESHOLD: 45,
+    RECOVERY_WARNING_THRESHOLD: 50,
 
     // Depth quality thresholds (wrist travel in inches from overhead lockout)
-    DEPTH_MARKER_PARTIAL: 4,       // Partial rep
-    DEPTH_MARKER_PARALLEL: 8,      // Head level / chin height
-    DEPTH_MARKER_DEEP: 12,         // Full ROM to shoulders
+    DEPTH_MARKER_PARTIAL: 6,       // Partial rep (above head)
+    DEPTH_MARKER_PARALLEL: 10,     // Head level / chin height
+    DEPTH_MARKER_DEEP: 14,         // Full ROM to shoulders
 
     // Calibration - uses shoulder-to-wrist distance at lockout overhead
     SHOULDER_WRIST_RATIO: 0.37,    // Approximate shoulder-wrist distance as fraction of height
-    CALIBRATION_TOLERANCE: 0.18,   // Wider tolerance for kneeling/unstable positions
+    CALIBRATION_TOLERANCE: 0.15,
     LOCKOUT_ELBOW_ANGLE: 155,      // Degrees - near full extension
   };
 
@@ -101,10 +101,9 @@
   function calibrateOHPBaseline(wristY, wristX, shoulderY, elbowY, state, feedbackEl) {
     const shoulderWristDist = Math.abs(wristY - shoulderY);
 
-    // Sanity check: shoulder-wrist distance should be reasonable at lockout
-    // Lower bound relaxed to support kneeling and single-arm variations
-    if (shoulderWristDist < 0.015 || shoulderWristDist > 0.45) {
-      if (feedbackEl) feedbackEl.textContent = "Hold press at lockout - camera needs to see your full arm from the side";
+    // Sanity check: shoulder-wrist distance should be reasonable at overhead lockout
+    if (shoulderWristDist < 0.03 || shoulderWristDist > 0.45) {
+      if (feedbackEl) feedbackEl.textContent = "Hold bar overhead - camera needs to see your full arm from the side";
       return true; // still calibrating
     }
 
@@ -170,7 +169,7 @@
     isSingleLeg: false,
     needsShoulder: false,
     needsWrist: true,      // Flag for upper body exercise
-    referenceDepth: 10,    // Typical wrist travel in inches for OHP (accounts for variations)
+    referenceDepth: 12,    // Typical wrist travel in inches for OHP
 
     hyperparams: OHP,
 
