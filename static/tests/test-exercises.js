@@ -366,10 +366,10 @@
 
     test('has 5-tier quality assessment', function() {
       const module = Chronicle.registry.get('hack-squat');
-      assertEqual(module.getQuality(19).label, 'Deep');
-      assertEqual(module.getQuality(15).label, 'Parallel');
-      assertEqual(module.getQuality(9).label, 'Half');
-      assertEqual(module.getQuality(5).label, 'Quarter');
+      assertEqual(module.getQuality(14).label, 'Deep');
+      assertEqual(module.getQuality(10).label, 'Parallel');
+      assertEqual(module.getQuality(6).label, 'Half');
+      assertEqual(module.getQuality(3).label, 'Quarter');
       assertEqual(module.getQuality(2).label, 'Shallow');
     });
 

@@ -8,18 +8,18 @@
   const utils = Chronicle.utils;
 
   const HACK = {
-    MIN_DEPTH_INCHES: 5,             // Slightly lower minimum - machine-guided
-    DESCENT_THRESHOLD_INCHES: 3.0,   // Lower threshold - smoother machine movement
-    RECOVERY_PERCENT: 80,
-    DESCENT_VELOCITY_MIN: 0.001,     // Lower velocity threshold for machine movement
+    MIN_DEPTH_INCHES: 3,             // Lower minimum - machine rail reduces vertical displacement
+    DESCENT_THRESHOLD_INCHES: 1.5,   // Low threshold - diagonal rail means less vertical movement
+    RECOVERY_PERCENT: 75,
+    DESCENT_VELOCITY_MIN: 0.0005,    // Lower velocity threshold - machine guides smooth movement
     DEPTH_TRIGGER_MULTIPLIER: 1.5,
-    RECOVERY_WARNING_THRESHOLD: 50,
+    RECOVERY_WARNING_THRESHOLD: 45,
 
-    // Depth markers (hack squat allows deeper range)
-    DEPTH_MARKER_QUARTER: 5,
-    DEPTH_MARKER_HALF: 8,
-    DEPTH_MARKER_PARALLEL: 14,
-    DEPTH_MARKER_DEEP: 18,
+    // Depth markers (reduced for machine - diagonal rail compresses vertical displacement ~70%)
+    DEPTH_MARKER_QUARTER: 3,
+    DEPTH_MARKER_HALF: 5,
+    DEPTH_MARKER_PARALLEL: 9,
+    DEPTH_MARKER_DEEP: 13,
   };
 
   Chronicle.exercises['hack-squat'] = {
@@ -30,7 +30,7 @@
     category: 'squat',
     isSingleLeg: false,
     needsShoulder: false,
-    referenceDepth: 14,  // Typical parallel depth (inches) for hack squat
+    referenceDepth: 9,   // Typical parallel depth (inches) for hack squat on machine rail
     hyperparams: HACK,
 
     depthMarkers: [
