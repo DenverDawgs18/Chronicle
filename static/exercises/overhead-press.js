@@ -20,7 +20,7 @@
     // Depth quality thresholds (wrist travel in inches from overhead lockout)
     DEPTH_MARKER_PARTIAL: 6,       // Partial rep (above head)
     DEPTH_MARKER_PARALLEL: 10,     // Head level / chin height
-    DEPTH_MARKER_DEEP: 14,        // Full ROM to shoulders
+    DEPTH_MARKER_DEEP: 14,         // Full ROM to shoulders
 
     // Calibration - uses shoulder-to-wrist distance at lockout overhead
     SHOULDER_WRIST_RATIO: 0.37,    // Approximate shoulder-wrist distance as fraction of height
