@@ -128,11 +128,21 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.1/camera_utils.js"></script>
 
   <script>
-    // Mobile exercise panel toggle
+    // Exercise panel toggle
     function toggleMobileExercisePanel() {
       const panel = document.getElementById('mobileExercisePanel');
       if (panel) panel.classList.toggle('open');
     }
+
+    // Close panel when clicking outside
+    document.addEventListener('click', function(e) {
+      const panel = document.getElementById('mobileExercisePanel');
+      const toggle = document.getElementById('mobileExerciseToggle');
+      if (panel && panel.classList.contains('open') &&
+          !panel.contains(e.target) && !toggle.contains(e.target)) {
+        panel.classList.remove('open');
+      }
+    });
 
     // Height slider functionality
     const heightSlider = document.getElementById('heightSlider');

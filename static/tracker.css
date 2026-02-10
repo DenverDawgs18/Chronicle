@@ -53,47 +53,9 @@ body {
   border: 1px solid rgba(167, 139, 250, 0.3);
 }
 
-/* Exercise Selector */
+/* Exercise Selector - inline version hidden, using dropdown everywhere */
 .exercise-selector {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-
-.exercise-selector-group {
-  display: flex;
-  gap: 2px;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  padding: 3px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.exercise-option {
-  background: transparent !important;
-  border: none !important;
-  color: rgba(255, 255, 255, 0.5);
-  padding: 5px 14px !important;
-  border-radius: 8px !important;
-  font-size: 13px !important;
-  font-weight: 500 !important;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: none !important;
-  min-width: auto;
-}
-
-.exercise-option:hover {
-  color: rgba(255, 255, 255, 0.8);
-  background: rgba(255, 255, 255, 0.08) !important;
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-.exercise-option.active {
-  background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%) !important;
-  color: #fff;
-  font-weight: 600 !important;
+  display: none !important;
 }
 
 .program-indicator {
@@ -109,14 +71,98 @@ body {
   display: none;
 }
 
-/* Mobile exercise toggle button - hidden on desktop */
+/* Exercise toggle button - shown on all screen sizes */
 .mobile-exercise-toggle {
-  display: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.2), rgba(167, 139, 250, 0.2)) !important;
+  border: 1px solid rgba(96, 165, 250, 0.3) !important;
+  border-radius: 8px !important;
+  padding: 6px 14px !important;
+  color: #fff;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  box-shadow: none !important;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
-/* Mobile exercise dropdown panel - hidden on desktop */
+.mobile-exercise-toggle span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-exercise-toggle svg {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+/* Exercise dropdown panel - shown on all screen sizes */
 .mobile-exercise-panel {
-  display: none;
+  display: block;
+  position: fixed;
+  top: 56px;
+  left: 0;
+  right: 0;
+  z-index: 190;
+  background: rgba(15, 15, 35, 0.95);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.mobile-exercise-panel.open {
+  max-height: 300px;
+}
+
+.mobile-exercise-panel-content {
+  padding: 12px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.mobile-exercise-panel .exercise-selector-group {
+  display: flex;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mobile-exercise-panel .exercise-option {
+  background: transparent !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 6px 14px !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: none !important;
+  min-width: auto;
+}
+
+.mobile-exercise-panel .exercise-option:hover {
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.08) !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.mobile-exercise-panel .exercise-option.active {
+  background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%) !important;
+  color: #fff;
+  font-weight: 600 !important;
 }
 
 /* Camera Hint Tooltip */
@@ -432,107 +478,28 @@ body {
         padding: 4px 10px;
       }
 
-      /* Hide inline exercise selector on mobile */
-      .exercise-selector {
-        display: none !important;
-      }
-
-      /* Show mobile exercise toggle button */
       .mobile-exercise-toggle {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        background: linear-gradient(135deg, rgba(96, 165, 250, 0.2), rgba(167, 139, 250, 0.2)) !important;
-        border: 1px solid rgba(96, 165, 250, 0.3) !important;
-        border-radius: 8px !important;
-        padding: 6px 12px !important;
-        color: #fff;
         font-size: 13px !important;
-        font-weight: 600 !important;
-        cursor: pointer;
-        box-shadow: none !important;
-        flex-shrink: 1;
-        min-width: 0;
-        overflow: hidden;
+        padding: 6px 12px !important;
       }
 
-      .mobile-exercise-toggle span {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      .mobile-exercise-toggle svg {
-        flex-shrink: 0;
-        transition: transform 0.2s ease;
-      }
-
-      /* Show mobile exercise dropdown panel */
       .mobile-exercise-panel {
-        display: block;
-        position: fixed;
         top: 48px;
-        left: 0;
-        right: 0;
-        z-index: 190;
-        background: rgba(15, 15, 35, 0.95);
-        backdrop-filter: blur(20px);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        max-height: 0;
-        overflow: hidden;
-        transition: max-height 0.3s ease;
-      }
-
-      .mobile-exercise-panel.open {
-        max-height: 300px;
-      }
-
-      .mobile-exercise-panel.open + #video-container ~ .mobile-exercise-toggle svg,
-      .mobile-exercise-panel.open ~ .tracker-nav .mobile-exercise-toggle svg {
-        transform: rotate(180deg);
       }
 
       .mobile-exercise-panel-content {
         padding: 12px;
-        display: flex;
-        flex-wrap: wrap;
         gap: 6px;
-        justify-content: center;
       }
 
       .mobile-exercise-panel .exercise-selector-group {
-        display: flex;
-        gap: 2px;
-        background: rgba(255, 255, 255, 0.08);
         border-radius: 8px;
-        padding: 3px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
       }
 
       .mobile-exercise-panel .exercise-option {
-        background: transparent !important;
-        border: none !important;
-        color: rgba(255, 255, 255, 0.5);
         padding: 6px 10px !important;
         border-radius: 6px !important;
         font-size: 12px !important;
-        font-weight: 500 !important;
-        cursor: pointer;
-        box-shadow: none !important;
-        min-width: auto;
-      }
-
-      .mobile-exercise-panel .exercise-option:hover {
-        color: rgba(255, 255, 255, 0.8);
-        background: rgba(255, 255, 255, 0.08) !important;
-        transform: none !important;
-        box-shadow: none !important;
-      }
-
-      .mobile-exercise-panel .exercise-option.active {
-        background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%) !important;
-        color: #fff;
-        font-weight: 600 !important;
       }
 
       .camera-hint {
