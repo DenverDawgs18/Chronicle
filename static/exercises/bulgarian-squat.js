@@ -186,10 +186,10 @@
 
         case 'descending': {
           const descendQuality = this.getQuality(currentDepthInches);
-          if (ui.feedback) ui.feedback.textContent = `[${sideLabel}] ${currentDepthInches.toFixed(1)}" ${descendQuality.emoji} ${descendQuality.label}`;
+          if (ui.feedback) ui.feedback.textContent = `[${sideLabel}] Down ${descendQuality.emoji}`;
 
           if (state.velocityHistory.length >= C.VELOCITY_WINDOW && avgVelocity < -C.VELOCITY_THRESHOLD) {
-            if (maxDepthInches >= BULG.MIN_DEPTH_INCHES) {
+            if (maxDepthInches >= BULG.MIN_DEPTH_INCHES * Chronicle.settings.sensitivityMultiplier()) {
               utils.updateState('ascending', state, ui.status);
               state.ascentStartTime = performance.now();
               state.velocityHistory = [];
@@ -198,7 +198,7 @@
               const quality = this.getQuality(maxDepthInches);
               if (ui.feedback) ui.feedback.textContent = `[${sideLabel}] Drive up! ${quality.emoji}`;
             } else {
-              if (ui.feedback) ui.feedback.textContent = `Too shallow! Need at least ${BULG.MIN_DEPTH_INCHES}"`;
+              if (ui.feedback) ui.feedback.textContent = `Too shallow!`;
               utils.resetToStanding(state, ui.status);
             }
           }
@@ -222,7 +222,7 @@
           }
 
           const isAboveThreshold = currentDepthNorm < descentThresholdNorm - hysteresisNorm;
-          const hasMinDepth = maxDepthInches >= BULG.MIN_DEPTH_INCHES;
+          const hasMinDepth = maxDepthInches >= BULG.MIN_DEPTH_INCHES * Chronicle.settings.sensitivityMultiplier();
 
           if (recoveryPercent >= BULG.RECOVERY_PERCENT && isAboveThreshold && hasMinDepth) {
             const ascentTime = (performance.now() - state.ascentStartTime) / 1000;

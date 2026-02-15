@@ -3,7 +3,8 @@
 // and delegates exercise detection to the modular exercise system.
 // Exercise logic is in static/exercises/*.js
 
-const DEBUG_MODE = true;
+// Debug mode controlled by user settings (Chronicle.settings.debugOverlay)
+const DEBUG_MODE = false; // Overridden by settings on init
 
 // ========== DOM ELEMENTS ==========
 const video = document.getElementById('video');
@@ -153,7 +154,7 @@ function drawPose(results) {
   const isUpperBody = exerciseModule && exerciseModule.needsWrist;
   const isHybridRow = exerciseModule && exerciseModule.needsWrist && exerciseModule.needsHip;
 
-  if (DEBUG_MODE) {
+  if (Chronicle.settings.debugOverlay) {
     const landmarksToShow = isHybridRow ? [
       { idx: 11, name: 'L_Shoulder', color: '#FF00FF' },
       { idx: 12, name: 'R_Shoulder', color: '#FF00FF' },
@@ -453,7 +454,7 @@ function drawPose(results) {
   }
 
   // Debug overlay
-  if (DEBUG_MODE && trackingState.debugInfo) {
+  if (Chronicle.settings.debugOverlay && trackingState.debugInfo) {
     ctx.save();
     ctx.scale(-1, 1);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
@@ -580,8 +581,8 @@ async function initializePose() {
       smoothLandmarks: true,
       selfieMode: false,
       enableSegmentation: false,
-      minDetectionConfidence: 0.8,
-      minTrackingConfidence: 0.8
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.5
     });
 
     pose.onResults(onResults);
@@ -814,22 +815,26 @@ if (saveSetBtn) {
 // ========== CAMERA HINT TOOLTIP ==========
 
 const cameraHints = {
-  'squat': 'Camera needs: Hip + Knee visible (side view)',
-  'hack-squat': 'Camera needs: Hip + Knee visible (side view)',
-  'bulgarian-squat': 'Camera needs: Hip + Knee visible (side view)',
-  'split-squat': 'Camera needs: Hip + Knee visible (side view)',
-  'general-squat': 'Camera needs: Hip + Knee visible (side view)',
-  'general-lunge': 'Camera needs: Hip + Knee visible (side view)',
-  'deadlift': 'Camera needs: Shoulder + Hip + Knee visible (side view)',
-  'rdl': 'Camera needs: Shoulder + Hip + Knee visible (side view)',
-  'single-leg-rdl': 'Camera needs: Shoulder + Hip + Knee visible (side view)',
-  'general-hinge': 'Camera needs: Shoulder + Hip + Knee visible (side view)',
-  'bench-press': 'Camera needs: Shoulder + Elbow + Wrist visible (side view)',
-  'overhead-press': 'Camera needs: Shoulder + Elbow + Wrist visible (side view)',
-  'dips': 'Camera needs: Shoulder + Elbow visible (side view)',
-  'general-press': 'Camera needs: Shoulder + Elbow + Wrist visible (side view)',
-  'barbell-row': 'Camera needs: Shoulder + Hip + Wrist or Elbow visible (side view)',
-  'general-pull': 'Camera needs: Shoulder + Hip + Wrist or Elbow visible (side view)',
+  'squat': 'Hip + Knee visible (side view)',
+  'hack-squat': 'Hip + Knee visible (side view) - full body not required',
+  'bulgarian-squat': 'Hip + Knee visible (side view)',
+  'split-squat': 'Hip + Knee visible (side view)',
+  'general-squat': 'Hip + Knee visible (side view)',
+  'general-lunge': 'Hip + Knee visible (side view)',
+  'deadlift': 'Shoulder + Hip + Knee visible (side view)',
+  'rdl': 'Shoulder + Hip + Knee visible (side view)',
+  'single-leg-rdl': 'Shoulder + Hip + Knee visible (side view)',
+  'general-hinge': 'Shoulder + Hip + Knee visible (side view)',
+  'bench-press': 'Shoulder + Elbow + Wrist visible (side view)',
+  'overhead-press': 'Shoulder + Elbow + Wrist visible (side view)',
+  'dips': 'Shoulder + Elbow visible (side view)',
+  'kneeling-press': 'Shoulder + Elbow + Wrist visible (side view)',
+  'general-press': 'Shoulder + Elbow + Wrist visible (side view)',
+  'barbell-row': 'Shoulder + Hip + Wrist or Elbow visible (side view)',
+  'dumbbell-row': 'Shoulder + Hip + Wrist or Elbow visible (side view)',
+  'pendlay-row': 'Shoulder + Hip + Wrist or Elbow visible (side view)',
+  'cable-row': 'Shoulder + Hip + Wrist or Elbow visible (side view)',
+  'general-pull': 'Shoulder + Hip + Wrist or Elbow visible (side view)',
 };
 
 function updateCameraHint() {
@@ -926,6 +931,19 @@ async function switchWorkoutForExercise() {
 }
 
 // ========== BOOTSTRAP ==========
+
+// Load user tracker settings
+(function loadTrackerSettings() {
+  const settingsEl = document.getElementById('trackerSettingsData');
+  if (settingsEl) {
+    try {
+      const settings = JSON.parse(settingsEl.textContent);
+      Chronicle.settings.load(settings);
+    } catch (e) {
+      console.error('Failed to parse tracker settings:', e);
+    }
+  }
+})();
 
 // Initialize exercise state
 initExerciseState();

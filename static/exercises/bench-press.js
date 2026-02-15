@@ -300,20 +300,20 @@
 
         case 'descending': {
           const descendQuality = this.getQuality(currentDepthInches);
-          if (ui.feedback) ui.feedback.textContent = `Down ${currentDepthInches.toFixed(1)}" ${descendQuality.emoji} ${descendQuality.label}`;
+          if (ui.feedback) ui.feedback.textContent = `Down ${descendQuality.emoji}`;
 
           // Transition to ascending when wrist starts moving back up
           if (state.velocityHistory.length >= C.VELOCITY_WINDOW && avgVelocity < -C.VELOCITY_THRESHOLD) {
-            if (maxDepthInches >= BENCH.MIN_DEPTH_INCHES) {
+            if (maxDepthInches >= BENCH.MIN_DEPTH_INCHES * Chronicle.settings.sensitivityMultiplier()) {
               utils.updateState('ascending', state, ui.status);
               state.ascentStartTime = performance.now();
               state.velocityHistory = [];
               state.smoothedVelocity = 0;
 
               const quality = this.getQuality(maxDepthInches);
-              if (ui.feedback) ui.feedback.textContent = `Press! ${quality.emoji} ${quality.label}`;
+              if (ui.feedback) ui.feedback.textContent = `Press! ${quality.emoji}`;
             } else {
-              if (ui.feedback) ui.feedback.textContent = `Too shallow! Need at least ${BENCH.MIN_DEPTH_INCHES}"`;
+              if (ui.feedback) ui.feedback.textContent = `Too shallow!`;
               utils.resetToStanding(state, ui.status);
             }
           }
@@ -337,7 +337,7 @@
           }
 
           const isAboveThreshold = currentDepthNorm < descentThresholdNorm - hysteresisNorm;
-          const hasMinDepth = maxDepthInches >= BENCH.MIN_DEPTH_INCHES;
+          const hasMinDepth = maxDepthInches >= BENCH.MIN_DEPTH_INCHES * Chronicle.settings.sensitivityMultiplier();
 
           if (recoveryPercent >= BENCH.RECOVERY_PERCENT && isAboveThreshold && hasMinDepth) {
             const ascentTime = (performance.now() - state.ascentStartTime) / 1000;
@@ -353,7 +353,7 @@
             }
 
             if (ui.counter) ui.counter.textContent = `Reps: ${state.repCount}`;
-            if (ui.feedback) ui.feedback.textContent = `Rep ${state.repCount}: Speed ${speedScore} ${quality.emoji} ${quality.label}`;
+            if (ui.feedback) ui.feedback.textContent = `Rep ${state.repCount}: Speed ${speedScore} ${quality.emoji}`;
 
             this.displayRepTimes(state, ui.msg);
             utils.resetToStanding(state, ui.status);
@@ -396,7 +396,7 @@
 
         html += `<div style="margin: 5px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">
           <div style="font-size: 16px; margin-bottom: 4px;">
-            Rep ${actualRepNum}: Speed ${speedScore} ${quality.emoji} ${quality.label}
+            Rep ${actualRepNum}: Speed ${speedScore} ${quality.emoji}
             <span style="color: ${color}; margin-left: 10px; font-weight: bold;">${dropNum > 0 ? '-' : '+'}${Math.abs(dropNum).toFixed(1)}%</span>
           </div>
         </div>`;

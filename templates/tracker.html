@@ -8,6 +8,7 @@
   <title>Chronicle - {{ exercise_name }} Tracker</title>
 </head>
 <body>
+<script id="trackerSettingsData" type="application/json">{{ tracker_settings|safe }}</script>
 <nav class="tracker-nav">
   <a href="{{ url_for('dashboard') }}" class="nav-back" title="Back to Dashboard">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -53,8 +54,16 @@
       <button class="exercise-option {{ 'active' if exercise_type == 'general-pull' else '' }}" data-exercise="general-pull" onclick="setExercise('general-pull')" title="Pull-ups, lat pulldowns, face pulls, cable pulls, etc.">Pull+</button>
     </div>
   </div>
-  <span id="setCounter" class="set-counter">Set 1</span>
-  <span id="programExerciseIndicator" class="program-indicator hidden"></span>
+  <div class="nav-right-group">
+    <span id="setCounter" class="set-counter">Set 1</span>
+    <button id="settingsToggle" class="settings-toggle" onclick="toggleSettingsPanel()" title="Tracker Settings">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+      </svg>
+    </button>
+    <span id="programExerciseIndicator" class="program-indicator hidden"></span>
+  </div>
 </nav>
 <div id="mobileExercisePanel" class="mobile-exercise-panel">
   <div class="mobile-exercise-panel-content">
@@ -90,6 +99,40 @@
     </div>
   </div>
 </div>
+
+<!-- Settings Panel -->
+<div id="settingsPanel" class="settings-panel">
+  <div class="settings-panel-header">
+    <h3>Tracker Settings</h3>
+    <button class="settings-close" onclick="toggleSettingsPanel()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M18 6L6 18M6 6l12 12"/>
+      </svg>
+    </button>
+  </div>
+  <div class="settings-panel-body">
+    <div class="settings-group">
+      <label class="settings-label">Rep Sensitivity</label>
+      <p class="settings-desc">Controls how deep you need to go for a rep to count. Lower sensitivity = shallower reps count.</p>
+      <div class="settings-options" id="sensitivityOptions">
+        <button class="settings-option" data-value="easy" onclick="setSensitivity('easy')">Easy</button>
+        <button class="settings-option" data-value="normal" onclick="setSensitivity('normal')">Normal</button>
+        <button class="settings-option" data-value="strict" onclick="setSensitivity('strict')">Strict</button>
+      </div>
+    </div>
+    <div class="settings-group">
+      <label class="settings-label">Debug Overlay</label>
+      <p class="settings-desc">Show landmark positions and tracking data on the camera view.</p>
+      <div class="settings-toggle-row">
+        <span id="debugToggleLabel">Off</span>
+        <button id="debugToggleBtn" class="toggle-btn" onclick="toggleDebugOverlay()">
+          <span class="toggle-knob"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="video-container">
     <video id="video" playsinline autoplay muted></video>
     <canvas id="canvas" width="640" height="480"></canvas>
@@ -120,8 +163,8 @@
   </div>
 
   <div class="content-stack">
-    <div id="msg">Your rep speed will show up here</div>
     <div id="feedback">Allow Camera for tracking</div>
+    <div id="msg">Your rep speed will show up here</div>
   </div>
 
   <!-- MediaPipe Libraries -->
@@ -136,13 +179,68 @@
       if (panel) panel.classList.toggle('open');
     }
 
-    // Close panel when clicking outside
+    // Settings panel toggle
+    function toggleSettingsPanel() {
+      const panel = document.getElementById('settingsPanel');
+      if (panel) panel.classList.toggle('open');
+    }
+
+    function setSensitivity(level) {
+      Chronicle.settings.sensitivity = level;
+      document.querySelectorAll('#sensitivityOptions .settings-option').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.value === level);
+      });
+      // Save to server
+      fetch('/api/tracker/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sensitivity: level })
+      });
+    }
+
+    function toggleDebugOverlay() {
+      Chronicle.settings.debugOverlay = !Chronicle.settings.debugOverlay;
+      updateDebugToggleUI();
+      // Save to server
+      fetch('/api/tracker/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ debug_overlay: Chronicle.settings.debugOverlay })
+      });
+    }
+
+    function updateDebugToggleUI() {
+      const btn = document.getElementById('debugToggleBtn');
+      const label = document.getElementById('debugToggleLabel');
+      if (btn) btn.classList.toggle('active', Chronicle.settings.debugOverlay);
+      if (label) label.textContent = Chronicle.settings.debugOverlay ? 'On' : 'Off';
+    }
+
+    function initSettingsUI() {
+      // Wait for Chronicle.settings to be loaded
+      setTimeout(function() {
+        // Set sensitivity button state
+        document.querySelectorAll('#sensitivityOptions .settings-option').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.value === Chronicle.settings.sensitivity);
+        });
+        updateDebugToggleUI();
+      }, 100);
+    }
+
+    // Close panels when clicking outside
     document.addEventListener('click', function(e) {
       const panel = document.getElementById('mobileExercisePanel');
       const toggle = document.getElementById('mobileExerciseToggle');
       if (panel && panel.classList.contains('open') &&
           !panel.contains(e.target) && !toggle.contains(e.target)) {
         panel.classList.remove('open');
+      }
+
+      const settingsPanel = document.getElementById('settingsPanel');
+      const settingsToggle = document.getElementById('settingsToggle');
+      if (settingsPanel && settingsPanel.classList.contains('open') &&
+          !settingsPanel.contains(e.target) && !settingsToggle.contains(e.target)) {
+        settingsPanel.classList.remove('open');
       }
     });
 
@@ -162,6 +260,7 @@
 
     // Initialize display
     updateHeightDisplay(parseInt(heightSlider.value));
+    initSettingsUI();
   </script>
 
   <!-- Exercise modules (load in order: base -> exercises -> registry -> orchestrator) -->

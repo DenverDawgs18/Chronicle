@@ -14,10 +14,10 @@ Chronicle.CONSTANTS = {
   RECALIBRATION_TIMEOUT_MS: 8000,
 
   // Landmark detection
-  LANDMARK_VISIBILITY_THRESHOLD: 0.4,
+  LANDMARK_VISIBILITY_THRESHOLD: 0.3,
   SIDE_LOCK_CONFIDENCE_THRESHOLD: 0.15,
   HIP_KNEE_RATIO: 0.24,
-  TRACKING_LOSS_TOLERANCE_FRAMES: 30,
+  TRACKING_LOSS_TOLERANCE_FRAMES: 45,
 
   // Position smoothing
   POSITION_SMOOTHING_ALPHA: 0.5,
@@ -473,7 +473,7 @@ Chronicle.utils = {
     const currentHipKneeDist = Math.abs(kneeY - hipY);
 
     if (currentHipKneeDist < 0.05 || currentHipKneeDist > 0.5) {
-      if (feedbackEl) feedbackEl.textContent = "Position yourself so full body is visible";
+      if (feedbackEl) feedbackEl.textContent = "Adjust camera so hip and knee are visible";
       return true;
     }
 
@@ -668,28 +668,54 @@ Chronicle.utils = {
   },
 };
 
+// ========== TRACKER SETTINGS ==========
+
+Chronicle.settings = {
+  sensitivity: 'normal',   // 'easy', 'normal', 'strict'
+  debugOverlay: false,
+
+  // Sensitivity multipliers for MIN_DEPTH thresholds
+  // 'easy' lowers thresholds so shallower reps count
+  // 'strict' raises thresholds requiring deeper reps
+  sensitivityMultiplier: function() {
+    switch (this.sensitivity) {
+      case 'easy': return 0.6;
+      case 'strict': return 1.3;
+      default: return 1.0;
+    }
+  },
+
+  load: function(settingsObj) {
+    if (!settingsObj) return;
+    if (settingsObj.sensitivity) this.sensitivity = settingsObj.sensitivity;
+    if (typeof settingsObj.debug_overlay === 'boolean') this.debugOverlay = settingsObj.debug_overlay;
+  },
+};
+
 // ========== DEPTH QUALITY FUNCTIONS ==========
+// Quality labels use emoji indicators only - no misleading text labels
+// like "Half" or "Parallel" that could be inaccurate at different sensitivities.
 
 Chronicle.quality = {
   squat: function(depthInches) {
-    if (depthInches >= 17.5) return { emoji: '+++', label: 'Deep', color: '#00FF00' };
-    if (depthInches >= 15.5) return { emoji: '++', label: 'Parallel', color: '#90EE90' };
-    if (depthInches >= 6) return { emoji: '+', label: 'Half', color: '#FFD700' };
-    return { emoji: '!', label: 'Shallow', color: '#FFA500' };
+    if (depthInches >= 17.5) return { emoji: '+++', label: 'deep', color: '#00FF00' };
+    if (depthInches >= 15.5) return { emoji: '++', label: 'good', color: '#90EE90' };
+    if (depthInches >= 6) return { emoji: '+', label: 'moderate', color: '#FFD700' };
+    return { emoji: '~', label: 'shallow', color: '#FFA500' };
   },
 
   lockout: function(angleDiffFromStanding) {
-    if (angleDiffFromStanding <= 5) return { emoji: '+++', label: 'Full Lockout', color: '#00FF00' };
-    if (angleDiffFromStanding <= 10) return { emoji: '++', label: 'Lockout', color: '#90EE90' };
-    if (angleDiffFromStanding <= 20) return { emoji: '+', label: 'Partial', color: '#FFD700' };
-    return { emoji: '!', label: 'Soft Lockout', color: '#FFA500' };
+    if (angleDiffFromStanding <= 5) return { emoji: '+++', label: 'full lockout', color: '#00FF00' };
+    if (angleDiffFromStanding <= 10) return { emoji: '++', label: 'lockout', color: '#90EE90' };
+    if (angleDiffFromStanding <= 20) return { emoji: '+', label: 'moderate', color: '#FFD700' };
+    return { emoji: '~', label: 'partial', color: '#FFA500' };
   },
 
   hingeDepth: function(angleDeg) {
-    if (angleDeg >= 70) return { emoji: '+++', label: 'Full Stretch', color: '#00FF00' };
-    if (angleDeg >= 50) return { emoji: '++', label: 'Parallel', color: '#90EE90' };
-    if (angleDeg >= 30) return { emoji: '+', label: 'Partial', color: '#FFD700' };
-    return { emoji: '!', label: 'Shallow', color: '#FFA500' };
+    if (angleDeg >= 70) return { emoji: '+++', label: 'full ROM', color: '#00FF00' };
+    if (angleDeg >= 50) return { emoji: '++', label: 'good', color: '#90EE90' };
+    if (angleDeg >= 30) return { emoji: '+', label: 'moderate', color: '#FFD700' };
+    return { emoji: '~', label: 'shallow', color: '#FFA500' };
   },
 };
 
