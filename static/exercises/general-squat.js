@@ -129,7 +129,7 @@
 
           if (avgVelocity < -C.VELOCITY_THRESHOLD) {
             const maxDepthInches = utils.normToInches(state.deepestHipY - state.standingHipY, state);
-            if (maxDepthInches >= GEN_SQ.MIN_DEPTH_INCHES) {
+            if (maxDepthInches >= GEN_SQ.MIN_DEPTH_INCHES * Chronicle.settings.sensitivityMultiplier()) {
               utils.updateState('ascending', state, ui.status);
               state.ascentStartTime = performance.now();
               if (ui.feedback) ui.feedback.textContent = 'Coming up!';
@@ -156,7 +156,7 @@
           const currentDepthNorm = currentHipY - state.standingHipY;
           const maxDepthInches = utils.normToInches(state.deepestHipY - state.standingHipY, state);
           const isAboveThreshold = currentDepthNorm < descentThresholdNorm - hysteresisNorm;
-          const hasMinDepth = maxDepthInches >= GEN_SQ.MIN_DEPTH_INCHES;
+          const hasMinDepth = maxDepthInches >= GEN_SQ.MIN_DEPTH_INCHES * Chronicle.settings.sensitivityMultiplier();
 
           if (recoveryPercent >= GEN_SQ.RECOVERY_PERCENT && isAboveThreshold && hasMinDepth) {
             const ascentTime = (performance.now() - state.ascentStartTime) / 1000;
@@ -172,7 +172,7 @@
             }
 
             if (ui.counter) ui.counter.textContent = `Reps: ${state.repCount}`;
-            if (ui.feedback) ui.feedback.textContent = `Rep ${state.repCount}: Speed ${speedScore} ${quality.emoji} ${quality.label}`;
+            if (ui.feedback) ui.feedback.textContent = `Rep ${state.repCount}: Speed ${speedScore} ${quality.emoji}`;
 
             this.displayRepTimes(state, ui.msg);
             utils.resetToStanding(state, ui.status);
@@ -215,7 +215,7 @@
 
         html += `<div style="margin: 5px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">
           <div style="font-size: 16px; margin-bottom: 4px;">
-            Rep ${actualRepNum}: Speed ${speedScore} ${quality.emoji} ${quality.label}
+            Rep ${actualRepNum}: Speed ${speedScore} ${quality.emoji}
             <span style="color: ${color}; margin-left: 10px; font-weight: bold;">${dropNum > 0 ? '-' : '+'}${Math.abs(dropNum).toFixed(1)}%</span>
           </div>
         </div>`;

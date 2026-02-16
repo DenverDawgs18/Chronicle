@@ -410,10 +410,10 @@
         case 'ascending': {
           var pullQuality = exercise.getQuality(currentPullInches);
           var cheatMsg = isCheating ? ' \u26A0 body english!' : '';
-          if (ui.feedback) ui.feedback.textContent = 'Pull ' + currentPullInches.toFixed(1) + '" ' + pullQuality.emoji + ' ' + pullQuality.label + cheatMsg;
+          if (ui.feedback) ui.feedback.textContent = 'Pull ' + pullQuality.emoji + cheatMsg;
 
           if (state.velocityHistory.length >= C.VELOCITY_WINDOW && avgVelocity > C.VELOCITY_THRESHOLD) {
-            if (maxPullInches >= hyper.MIN_PULL_INCHES) {
+            if (maxPullInches >= hyper.MIN_PULL_INCHES * Chronicle.settings.sensitivityMultiplier()) {
               utils.updateState('descending', state, ui.status);
               state.pullEndTime = performance.now();
               state.velocityHistory = [];
@@ -421,9 +421,9 @@
 
               var quality = exercise.getQuality(maxPullInches);
               var cheatLabel = isCheating ? ' \u26A0 Cheat' : '';
-              if (ui.feedback) ui.feedback.textContent = 'Lowering... ' + quality.emoji + ' ' + quality.label + cheatLabel;
+              if (ui.feedback) ui.feedback.textContent = 'Lowering... ' + quality.emoji + cheatLabel;
             } else {
-              if (ui.feedback) ui.feedback.textContent = 'Too shallow! Need at least ' + hyper.MIN_PULL_INCHES + '"';
+              if (ui.feedback) ui.feedback.textContent = 'Too shallow!';
               utils.resetToStanding(state, ui.status);
             }
           }
@@ -449,7 +449,7 @@
           }
 
           var isNearBaseline = currentPullNorm < pullThresholdNorm - hysteresisNorm;
-          var hasMinPull = maxPullInches >= hyper.MIN_PULL_INCHES;
+          var hasMinPull = maxPullInches >= hyper.MIN_PULL_INCHES * Chronicle.settings.sensitivityMultiplier();
 
           if (recoveryPercent >= recoveryTarget && isNearBaseline && hasMinPull) {
             var pullTime = (state.pullEndTime - state.ascentStartTime) / 1000;
@@ -466,7 +466,7 @@
 
             var repCheatLabel = isCheating ? ' \u26A0 Cheat' : '';
             if (ui.counter) ui.counter.textContent = 'Reps: ' + state.repCount;
-            if (ui.feedback) ui.feedback.textContent = 'Rep ' + state.repCount + ': Speed ' + speedScore + ' ' + repQuality.emoji + ' ' + repQuality.label + repCheatLabel;
+            if (ui.feedback) ui.feedback.textContent = 'Rep ' + state.repCount + ': Speed ' + speedScore + ' ' + repQuality.emoji + repCheatLabel;
 
             exercise.displayRepTimes(state, ui.msg);
             utils.resetToStanding(state, ui.status);
@@ -516,7 +516,7 @@
 
         html += '<div style="margin: 5px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">' +
           '<div style="font-size: 16px; margin-bottom: 4px;">' +
-          'Rep ' + actualRepNum + ': Speed ' + speedScore + ' ' + quality.emoji + ' ' + quality.label +
+          'Rep ' + actualRepNum + ': Speed ' + speedScore + ' ' + quality.emoji +
           ' <span style="color: ' + color + '; margin-left: 10px; font-weight: bold;">' + (dropNum > 0 ? '-' : '+') + Math.abs(dropNum).toFixed(1) + '%</span>' +
           '</div></div>';
       });

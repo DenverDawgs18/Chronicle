@@ -131,7 +131,7 @@
 
           const totalROM = state.deepestTorsoAngle - (state.standingTorsoAngle || 0);
 
-          if (state.dlAngleVelocity < -0.1 && totalROM >= GEN_HN.MIN_HINGE_ANGLE) {
+          if (state.dlAngleVelocity < -0.1 && totalROM >= GEN_HN.MIN_HINGE_ANGLE * Chronicle.settings.sensitivityMultiplier()) {
             utils.updateState('ascending', state, ui.status);
             state.liftStartTime = performance.now();
             state.ascentStartTime = performance.now();
@@ -172,7 +172,7 @@
             }
 
             if (ui.counter) ui.counter.textContent = `Reps: ${state.repCount}`;
-            if (ui.feedback) ui.feedback.textContent = `Rep ${state.repCount}: Speed ${speedScore} ${repQuality.emoji} ${repQuality.label} (${romDegrees.toFixed(0)}deg)`;
+            if (ui.feedback) ui.feedback.textContent = `Rep ${state.repCount}: Speed ${speedScore} ${repQuality.emoji}`;
 
             this.displayRepTimes(state, ui.msg);
             utils.resetHingeState(state, ui.status);
@@ -192,6 +192,10 @@
       if (!msgEl || state.repTimes.length === 0) return;
 
       const firstRepTime = state.repTimes[0];
+      const firstRepDepth = state.repDepths[0];
+      const refDepth = this.referenceDepth;
+      const firstSpeedScore = utils.calculateSpeedScore(firstRepTime, firstRepDepth, refDepth);
+
       let html = '<div style="margin-bottom: 10px; font-weight: bold;">Hinge Speed Analysis</div>';
 
       const recentReps = state.repTimes.slice(-5);
@@ -200,8 +204,10 @@
       recentReps.forEach((time, idx) => {
         const actualRepNum = state.repTimes.length - recentReps.length + idx + 1;
         const romDeg = recentROMs[idx];
-        const timeDrop = ((time - firstRepTime) / firstRepTime * 100).toFixed(1);
-        const dropNum = parseFloat(timeDrop);
+        const quality = this.getQuality(romDeg);
+        const speedScore = utils.calculateSpeedScore(time, romDeg, refDepth);
+        const scoreDrop = ((firstSpeedScore - speedScore) / firstSpeedScore * 100).toFixed(1);
+        const dropNum = parseFloat(scoreDrop);
 
         let color = '#00FF00';
         if (dropNum > C.VELOCITY_DROP_CRITICAL) color = '#FF4444';
@@ -209,8 +215,8 @@
 
         html += `<div style="margin: 5px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">
           <div style="font-size: 16px; margin-bottom: 4px;">
-            Rep ${actualRepNum}: ${time.toFixed(2)}s | ${romDeg.toFixed(0)}deg ROM
-            <span style="color: ${color}; margin-left: 10px; font-weight: bold;">${dropNum > 0 ? '+' : '-'}${Math.abs(dropNum).toFixed(1)}%</span>
+            Rep ${actualRepNum}: Speed ${speedScore} ${quality.emoji}
+            <span style="color: ${color}; margin-left: 10px; font-weight: bold;">${dropNum > 0 ? '-' : '+'}${Math.abs(dropNum).toFixed(1)}%</span>
           </div>
         </div>`;
       });

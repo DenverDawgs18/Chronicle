@@ -151,9 +151,9 @@
             state.setupEnteredTime = performance.now();
             state.lastSquatStartTime = performance.now();
             const stanceLabel = stance === 'sumo' ? ' (Sumo)' : '';
-            if (ui.feedback) ui.feedback.textContent = `Setup... ${angleFromStanding.toFixed(0)}deg hinge${stanceLabel}`;
+            if (ui.feedback) ui.feedback.textContent = `Setup...${stanceLabel}`;
           } else if (angleFromStanding > 10) {
-            if (ui.feedback) ui.feedback.textContent = `Hinging... ${angleFromStanding.toFixed(0)}deg (need ${thresholds.setupAngle}deg)`;
+            if (ui.feedback) ui.feedback.textContent = `Hinging...`;
           }
           break;
 
@@ -163,14 +163,14 @@
             state.setupTorsoAngle = torsoAngle;
           }
 
-          if (ui.feedback) ui.feedback.textContent = `Setup ${angleFromStanding.toFixed(0)}deg hinge`;
+          if (ui.feedback) ui.feedback.textContent = `Setup...`;
 
           const hasBeenInSetup = state.setupEnteredTime && (performance.now() - state.setupEnteredTime) > DL.MIN_SETUP_TIME_MS;
           const isAngleDecreasing = state.dlAngleVelocity < -DL.LIFT_VELOCITY_THRESHOLD;
           const isHipRising = avgVelocity < -C.VELOCITY_THRESHOLD;
           const romSoFar = state.deepestTorsoAngle - (state.standingTorsoAngle || 0);
 
-          if (hasBeenInSetup && (isAngleDecreasing || isHipRising) && romSoFar >= thresholds.minROM) {
+          if (hasBeenInSetup && (isAngleDecreasing || isHipRising) && romSoFar >= thresholds.minROM * Chronicle.settings.sensitivityMultiplier()) {
             utils.updateState('ascending', state, ui.status);
             state.liftStartTime = performance.now();
             state.deepestHipY = hipY;
@@ -210,7 +210,7 @@
             }
 
             if (ui.counter) ui.counter.textContent = `Reps: ${state.repCount}`;
-            if (ui.feedback) ui.feedback.textContent = `Rep ${state.repCount}: Speed ${speedScore} ${quality.emoji} ${quality.label} | ${romDegrees.toFixed(0)}deg ROM`;
+            if (ui.feedback) ui.feedback.textContent = `Rep ${state.repCount}: Speed ${speedScore} ${quality.emoji}`;
 
             this.displayRepTimes(state, ui.msg);
 
@@ -237,6 +237,9 @@
       if (!msgEl || state.repTimes.length === 0) return;
 
       const firstRepTime = state.repTimes[0];
+      const firstRepDepth = state.repDepths[0];
+      const refDepth = this.referenceDepth;
+      const firstSpeedScore = utils.calculateSpeedScore(firstRepTime, firstRepDepth, refDepth);
       const stance = state.detectedStance || 'conventional';
       const stanceLabel = stance.charAt(0).toUpperCase() + stance.slice(1);
       let html = `<div style="margin-bottom: 10px; font-weight: bold;">${stanceLabel} Deadlift Speed Analysis</div>`;
@@ -247,8 +250,10 @@
       recentReps.forEach((time, idx) => {
         const actualRepNum = state.repTimes.length - recentReps.length + idx + 1;
         const romDeg = recentROMs[idx];
-        const timeDrop = ((time - firstRepTime) / firstRepTime * 100).toFixed(1);
-        const dropNum = parseFloat(timeDrop);
+        const quality = this.getQuality(romDeg);
+        const speedScore = utils.calculateSpeedScore(time, romDeg, refDepth);
+        const scoreDrop = ((firstSpeedScore - speedScore) / firstSpeedScore * 100).toFixed(1);
+        const dropNum = parseFloat(scoreDrop);
 
         let color = '#00FF00';
         if (dropNum > C.VELOCITY_DROP_CRITICAL) color = '#FF4444';
@@ -256,8 +261,8 @@
 
         html += `<div style="margin: 5px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">
           <div style="font-size: 16px; margin-bottom: 4px;">
-            Rep ${actualRepNum}: ${time.toFixed(2)}s | ${romDeg.toFixed(0)}deg ROM
-            <span style="color: ${color}; margin-left: 10px; font-weight: bold;">${dropNum > 0 ? '+' : '-'}${Math.abs(dropNum).toFixed(1)}%</span>
+            Rep ${actualRepNum}: Speed ${speedScore} ${quality.emoji}
+            <span style="color: ${color}; margin-left: 10px; font-weight: bold;">${dropNum > 0 ? '-' : '+'}${Math.abs(dropNum).toFixed(1)}%</span>
           </div>
         </div>`;
       });

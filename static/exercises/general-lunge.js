@@ -165,7 +165,7 @@
 
           if (avgVelocity < -C.VELOCITY_THRESHOLD) {
             const maxDepthInches = utils.normToInches(state.deepestHipY - state.standingHipY, state);
-            if (maxDepthInches >= GEN_LN.MIN_DEPTH_INCHES) {
+            if (maxDepthInches >= GEN_LN.MIN_DEPTH_INCHES * Chronicle.settings.sensitivityMultiplier()) {
               utils.updateState('ascending', state, ui.status);
               state.ascentStartTime = performance.now();
               if (ui.feedback) ui.feedback.textContent = `[${sideLabel}] Coming up!`;
@@ -192,7 +192,7 @@
           const currentDepthNorm = currentHipY - state.standingHipY;
           const maxDepthInches = utils.normToInches(state.deepestHipY - state.standingHipY, state);
           const isAboveThreshold = currentDepthNorm < descentThresholdNorm - hysteresisNorm;
-          const hasMinDepth = maxDepthInches >= GEN_LN.MIN_DEPTH_INCHES;
+          const hasMinDepth = maxDepthInches >= GEN_LN.MIN_DEPTH_INCHES * Chronicle.settings.sensitivityMultiplier();
 
           if (recoveryPercent >= GEN_LN.RECOVERY_PERCENT && isAboveThreshold && hasMinDepth) {
             const ascentTime = (performance.now() - state.ascentStartTime) / 1000;

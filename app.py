@@ -62,6 +62,9 @@ class User(UserMixin, db.Model):
     # Dashboard customization - JSON string of metric names
     dashboard_metrics = db.Column(db.Text, nullable=True)  # e.g. '["squat", "bench", "deadlift"]'
 
+    # Tracker settings - JSON string of tracker preferences
+    tracker_settings = db.Column(db.Text, nullable=True)
+
     # Relationships
     athletes = db.relationship('User', backref=db.backref('coach', remote_side=[id]), lazy='dynamic')
 
@@ -81,6 +84,22 @@ class User(UserMixin, db.Model):
 
     def set_dashboard_metrics(self, metrics):
         self.dashboard_metrics = json.dumps(metrics[:6])  # Max 6 metrics
+
+    def get_tracker_settings(self):
+        defaults = {
+            'sensitivity': 'normal',
+            'debug_overlay': False,
+        }
+        if self.tracker_settings:
+            try:
+                saved = json.loads(self.tracker_settings)
+                defaults.update(saved)
+            except:
+                pass
+        return defaults
+
+    def set_tracker_settings(self, settings):
+        self.tracker_settings = json.dumps(settings)
 
     def get_display_name(self):
         return self.name or self.email.split('@')[0]
@@ -463,12 +482,15 @@ def tracker():
         'pendlay-row': 'Pendlay Row',
         'cable-row': 'Cable Row',
         'general-pull': 'General Pull',
+        'kneeling-press': 'Kneeling Press',
     }
     if exercise_type not in valid_exercises:
         exercise_type = 'squat'
+    settings = current_user.get_tracker_settings()
     return render_template('tracker.html', height=current_user.height or 58,
                          exercise_type=exercise_type,
-                         exercise_name=valid_exercises[exercise_type])
+                         exercise_name=valid_exercises[exercise_type],
+                         tracker_settings=json.dumps(settings))
 
 @app.route("/set_height", methods= ['POST'])
 @login_required
@@ -485,6 +507,34 @@ def set_height():
     return jsonify({'success': True, 'height': current_user.height})
 
 
+@app.route('/api/tracker/settings', methods=['GET'])
+@login_required
+def get_tracker_settings():
+    return jsonify({'success': True, 'settings': current_user.get_tracker_settings()})
+
+
+@app.route('/api/tracker/settings', methods=['PUT'])
+@login_required
+def update_tracker_settings():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    settings = current_user.get_tracker_settings()
+
+    if 'sensitivity' in data:
+        valid_levels = ['easy', 'normal', 'strict']
+        if data['sensitivity'] not in valid_levels:
+            return jsonify({'error': 'sensitivity must be easy, normal, or strict'}), 400
+        settings['sensitivity'] = data['sensitivity']
+
+    if 'debug_overlay' in data:
+        settings['debug_overlay'] = bool(data['debug_overlay'])
+
+    current_user.set_tracker_settings(settings)
+    db.session.commit()
+
+    return jsonify({'success': True, 'settings': current_user.get_tracker_settings()})
 
 
 @app.route('/code', methods=['GET', 'POST'])

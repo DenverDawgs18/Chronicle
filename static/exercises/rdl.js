@@ -123,9 +123,10 @@
             state.deepestTorsoAngle = torsoAngle;
             state.setupEnteredTime = performance.now();
             state.lastSquatStartTime = performance.now();
-            if (ui.feedback) ui.feedback.textContent = `Hinging... ${angleFromStanding.toFixed(0)}deg`;
+            const startQuality = this.getQuality(angleFromStanding);
+            if (ui.feedback) ui.feedback.textContent = `Hinging... ${startQuality.emoji}`;
           } else if (angleFromStanding > 8) {
-            if (ui.feedback) ui.feedback.textContent = `Hinge deeper... ${angleFromStanding.toFixed(0)}deg`;
+            if (ui.feedback) ui.feedback.textContent = `Hinge deeper...`;
           }
           break;
 
@@ -144,11 +145,11 @@
             kneeWarning = ' | Straighten knees!';
           }
 
-          if (ui.feedback) ui.feedback.textContent = `RDL ${angleFromStanding.toFixed(0)}deg ${quality.emoji}${kneeWarning}`;
+          if (ui.feedback) ui.feedback.textContent = `RDL ${quality.emoji}${kneeWarning}`;
 
           // Detect return (ascending): torso angle starts decreasing
           const isAngleDecreasing = state.dlAngleVelocity < -0.002;
-          const hasMinHinge = angleFromStanding >= RDL.MIN_HINGE_ANGLE;
+          const hasMinHinge = angleFromStanding >= RDL.MIN_HINGE_ANGLE * Chronicle.settings.sensitivityMultiplier();
           const hasBeenHinged = state.setupEnteredTime && (performance.now() - state.setupEnteredTime) > RDL.MIN_HINGE_TIME_MS;
 
           if (isAngleDecreasing && hasMinHinge && hasBeenHinged) {
@@ -190,7 +191,7 @@
             }
 
             if (ui.counter) ui.counter.textContent = `Reps: ${state.repCount}`;
-            if (ui.feedback) ui.feedback.textContent = `Rep ${state.repCount}: Speed ${speedScore} ${repQuality.emoji} | ${romDegrees.toFixed(0)}deg ROM`;
+            if (ui.feedback) ui.feedback.textContent = `Rep ${state.repCount}: Speed ${speedScore} ${repQuality.emoji}`;
 
             this.displayRepTimes(state, ui.msg);
 
@@ -215,6 +216,10 @@
       if (!msgEl || state.repTimes.length === 0) return;
 
       const firstRepTime = state.repTimes[0];
+      const firstRepDepth = state.repDepths[0];
+      const refDepth = this.referenceDepth;
+      const firstSpeedScore = utils.calculateSpeedScore(firstRepTime, firstRepDepth, refDepth);
+
       let html = '<div style="margin-bottom: 10px; font-weight: bold;">RDL Speed Analysis</div>';
 
       const recentReps = state.repTimes.slice(-5);
@@ -223,8 +228,10 @@
       recentReps.forEach((time, idx) => {
         const actualRepNum = state.repTimes.length - recentReps.length + idx + 1;
         const romDeg = recentROMs[idx];
-        const timeDrop = ((time - firstRepTime) / firstRepTime * 100).toFixed(1);
-        const dropNum = parseFloat(timeDrop);
+        const quality = this.getQuality(romDeg);
+        const speedScore = utils.calculateSpeedScore(time, romDeg, refDepth);
+        const scoreDrop = ((firstSpeedScore - speedScore) / firstSpeedScore * 100).toFixed(1);
+        const dropNum = parseFloat(scoreDrop);
 
         let color = '#00FF00';
         if (dropNum > C.VELOCITY_DROP_CRITICAL) color = '#FF4444';
@@ -232,8 +239,8 @@
 
         html += `<div style="margin: 5px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">
           <div style="font-size: 16px; margin-bottom: 4px;">
-            Rep ${actualRepNum}: ${time.toFixed(2)}s | ${romDeg.toFixed(0)}deg ROM
-            <span style="color: ${color}; margin-left: 10px; font-weight: bold;">${dropNum > 0 ? '+' : ''}${dropNum.toFixed(1)}%</span>
+            Rep ${actualRepNum}: Speed ${speedScore} ${quality.emoji}
+            <span style="color: ${color}; margin-left: 10px; font-weight: bold;">${dropNum > 0 ? '-' : '+'}${Math.abs(dropNum).toFixed(1)}%</span>
           </div>
         </div>`;
       });

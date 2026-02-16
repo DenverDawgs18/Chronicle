@@ -269,19 +269,19 @@
 
         case 'descending': {
           var descendQuality = this.getQuality(currentDepthInches);
-          if (ui.feedback) ui.feedback.textContent = 'Down ' + currentDepthInches.toFixed(1) + '" ' + descendQuality.emoji + ' ' + descendQuality.label;
+          if (ui.feedback) ui.feedback.textContent = 'Down ' + descendQuality.emoji;
 
           if (state.velocityHistory.length >= C.VELOCITY_WINDOW && avgVelocity < -C.VELOCITY_THRESHOLD) {
-            if (maxDepthInches >= GEN_PR.MIN_DEPTH_INCHES) {
+            if (maxDepthInches >= GEN_PR.MIN_DEPTH_INCHES * Chronicle.settings.sensitivityMultiplier()) {
               utils.updateState('ascending', state, ui.status);
               state.ascentStartTime = performance.now();
               state.velocityHistory = [];
               state.smoothedVelocity = 0;
 
               var quality = this.getQuality(maxDepthInches);
-              if (ui.feedback) ui.feedback.textContent = 'Press! ' + quality.emoji + ' ' + quality.label;
+              if (ui.feedback) ui.feedback.textContent = 'Press! ' + quality.emoji;
             } else {
-              if (ui.feedback) ui.feedback.textContent = 'Too shallow! Need at least ' + GEN_PR.MIN_DEPTH_INCHES + '"';
+              if (ui.feedback) ui.feedback.textContent = 'Too shallow!';
               utils.resetToStanding(state, ui.status);
             }
           }
@@ -305,7 +305,7 @@
           }
 
           var isAboveThreshold = currentDepthNorm < descentThresholdNorm - hysteresisNorm;
-          var hasMinDepth = maxDepthInches >= GEN_PR.MIN_DEPTH_INCHES;
+          var hasMinDepth = maxDepthInches >= GEN_PR.MIN_DEPTH_INCHES * Chronicle.settings.sensitivityMultiplier();
 
           if (recoveryPercent >= GEN_PR.RECOVERY_PERCENT && isAboveThreshold && hasMinDepth) {
             var ascentTime = (performance.now() - state.ascentStartTime) / 1000;
@@ -321,7 +321,7 @@
             }
 
             if (ui.counter) ui.counter.textContent = 'Reps: ' + state.repCount;
-            if (ui.feedback) ui.feedback.textContent = 'Rep ' + state.repCount + ': Speed ' + speedScore + ' ' + repQuality.emoji + ' ' + repQuality.label;
+            if (ui.feedback) ui.feedback.textContent = 'Rep ' + state.repCount + ': Speed ' + speedScore + ' ' + repQuality.emoji;
 
             this.displayRepTimes(state, ui.msg);
             utils.resetToStanding(state, ui.status);
@@ -365,7 +365,7 @@
 
         html += '<div style="margin: 5px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">' +
           '<div style="font-size: 16px; margin-bottom: 4px;">' +
-          'Rep ' + actualRepNum + ': Speed ' + speedScore + ' ' + quality.emoji + ' ' + quality.label +
+          'Rep ' + actualRepNum + ': Speed ' + speedScore + ' ' + quality.emoji +
           ' <span style="color: ' + color + '; margin-left: 10px; font-weight: bold;">' + (dropNum > 0 ? '-' : '+') + Math.abs(dropNum).toFixed(1) + '%</span>' +
           '</div></div>';
       });
