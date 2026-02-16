@@ -13,6 +13,7 @@
     <a href="{{ url_for('tracker') }}" class="nav-link primary">Tracker</a>
     <a href="https://billing.stripe.com/p/login/5kQdRa84z2Pn4I5drc4wM00" class="nav-link primary">Manage Billing</a>
   {% else %}
+    <a href="{{ url_for('access_code') }}" class="nav-link">Redeem Code</a>
     <a href="{{ url_for('subscribe') }}" class="nav-link primary">Subscribe</a>
   {% endif %}
 {% else %}
@@ -24,7 +25,7 @@
 <section class="hero">
   <h1>Train Like the Pros</h1>
   <p class="tagline">Without spending $1,000 on equipment</p>
-  <p class="subtext">Velocity based training powered by your phone camera. No sensors, no devices—just elite-level performance tracking in your pocket.</p>
+  <p class="subtext">Velocity based training powered by your phone camera. No sensors, no devices -- just elite-level performance tracking in your pocket.</p>
   {% if current_user.is_authenticated and current_user.subscribed %}
     <a href="{{ url_for('tracker') }}" class="cta-button">Start Tracking</a>
   {% else %}
@@ -34,8 +35,102 @@
 
 <section class="features">
   {{ feature_card("📱", "No Equipment Needed", "Your phone camera is all you need. No sensors, no special hardware, no complicated setup. Just open the app and start training.") }}
-  {{ feature_card("⚡", "Know Your Fatigue", "Track bar velocity in real-time to understand your true fatigue levels. Train smarter by knowing when to push and when to back off.") }}
-  {{ feature_card("📊", "Honest Depth Tracking", "Get objective feedback on squat depth. No more guessing—know exactly how deep you're going on every single rep.") }}
+  {{ feature_card("⚡", "Real-Time Velocity Feedback", "Track bar speed on every rep to understand your true fatigue levels. Train smarter by knowing exactly when to push and when to back off.") }}
+  {{ feature_card("📊", "Honest Depth Tracking", "Get objective feedback on squat depth, lockout quality, and ROM. No more guessing -- know exactly how deep you're going on every single rep.") }}
+</section>
+
+<section class="exercises-showcase">
+  <h2>22 Exercises Across 5 Categories</h2>
+  <p class="section-subtitle">From squats to Olympic lifts, Chronicle tracks them all with exercise-specific detection.</p>
+  <div class="exercise-categories">
+    <div class="exercise-category">
+      <div class="category-icon">🦵</div>
+      <h3>Squat</h3>
+      <p>Back Squat, Hack Squat, Bulgarian Split Squat, Split Squat, Lunges</p>
+    </div>
+    <div class="exercise-category">
+      <div class="category-icon">🏋️</div>
+      <h3>Hinge</h3>
+      <p>Deadlift, RDL, Single-Leg RDL, Good Mornings</p>
+    </div>
+    <div class="exercise-category">
+      <div class="category-icon">🏅</div>
+      <h3>Olympic</h3>
+      <p>Hang Clean, Power Clean</p>
+    </div>
+    <div class="exercise-category">
+      <div class="category-icon">💪</div>
+      <h3>Press</h3>
+      <p>Bench Press, Overhead Press, Dips, Kneeling Press</p>
+    </div>
+    <div class="exercise-category">
+      <div class="category-icon">🔗</div>
+      <h3>Pull</h3>
+      <p>Barbell Row, DB Row, Pendlay Row, Upright Row, Cable Row</p>
+    </div>
+  </div>
+</section>
+
+<section class="features-extended">
+  <h2>Everything You Need to Train Smarter</h2>
+  <div class="extended-grid">
+    <div class="extended-card">
+      <div class="extended-icon">📈</div>
+      <h3>Workout Dashboard</h3>
+      <p>Track every set and rep with detailed history. See velocity trends, fatigue drop-off, and volume metrics across all your workouts.</p>
+    </div>
+    <div class="extended-card">
+      <div class="extended-icon">🏃</div>
+      <h3>Speed Scores</h3>
+      <p>Normalized velocity scores that let you compare speed across different exercises. Know exactly how explosive you are on each lift.</p>
+    </div>
+    <div class="extended-card">
+      <div class="extended-icon">📋</div>
+      <h3>Training Programs</h3>
+      <p>Create structured programs with days, exercises, and prescribed sets. Log your work directly and track progress over time.</p>
+    </div>
+    <div class="extended-card">
+      <div class="extended-icon">👨‍🏫</div>
+      <h3>Coach System</h3>
+      <p>Coaches can manage athletes, create programs, and monitor training progress. Athletes get assigned programs with built-in velocity tracking.</p>
+    </div>
+    <div class="extended-card">
+      <div class="extended-icon">🔄</div>
+      <h3>Real-Time Sync</h3>
+      <p>Your tracker and dashboard stay connected. Every set saved instantly appears in your workout history -- no refresh needed.</p>
+    </div>
+    <div class="extended-card">
+      <div class="extended-icon">📐</div>
+      <h3>Auto Calibration</h3>
+      <p>Automatically calibrates to your body proportions using height input. Accurate depth measurements in inches for every exercise.</p>
+    </div>
+  </div>
+</section>
+
+<section class="how-it-works">
+  <h2>How It Works</h2>
+  <div class="steps">
+    <div class="step">
+      <div class="step-number">1</div>
+      <h3>Set Up Your Phone</h3>
+      <p>Position your camera to the side. Chronicle needs to see your key joints -- hip and knee for lower body, shoulder and wrist for upper body.</p>
+    </div>
+    <div class="step">
+      <div class="step-number">2</div>
+      <h3>Calibrate</h3>
+      <p>Stand still for a moment. Chronicle auto-calibrates to your body proportions using your height, establishing baseline measurements.</p>
+    </div>
+    <div class="step">
+      <div class="step-number">3</div>
+      <h3>Lift</h3>
+      <p>Perform your exercise. Chronicle tracks your reps in real-time, measuring depth, velocity, and speed scores on every rep.</p>
+    </div>
+    <div class="step">
+      <div class="step-number">4</div>
+      <h3>Review</h3>
+      <p>Save your set and see fatigue drop-off, depth quality, and velocity trends. All your data is stored in your workout dashboard.</p>
+    </div>
+  </div>
 </section>
 
 <section class="social-proof">
@@ -43,4 +138,25 @@
   <h2>Trusted by a 600lb Squatter</h2>
   <p>Built by lifters, for lifters. Chronicle brings professional-grade velocity based training to everyone.</p>
 </section>
+
+<footer class="landing-footer">
+  <div class="footer-content">
+    <div class="footer-brand">CHRONICLE</div>
+    <div class="footer-links">
+      {% if current_user.is_authenticated %}
+        {% if current_user.subscribed %}
+          <a href="{{ url_for('tracker') }}">Tracker</a>
+          <a href="{{ url_for('dashboard') }}">Dashboard</a>
+        {% else %}
+          <a href="{{ url_for('subscribe') }}">Subscribe</a>
+          <a href="{{ url_for('access_code') }}">Redeem Code</a>
+        {% endif %}
+      {% else %}
+        <a href="{{ url_for('login') }}">Sign In</a>
+        <a href="{{ url_for('subscribe') }}">Pricing</a>
+      {% endif %}
+    </div>
+    <p class="footer-tagline">Velocity based training for everyone.</p>
+  </div>
+</footer>
 {% endblock %}

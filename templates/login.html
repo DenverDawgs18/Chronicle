@@ -40,6 +40,15 @@
 
       {{ submit_button("Sign In") }}
     </form>
+
+    <div class="onboarding-links">
+      <div class="alt-action" id="codeAction">
+        Have an access code? <a href="{{ url_for('access_code') }}">Redeem it here</a>
+      </div>
+      <div class="alt-action" id="subscribeAction" style="display: none;">
+        No code? <a href="{{ url_for('subscribe') }}">Subscribe instead</a>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}

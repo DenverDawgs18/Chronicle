@@ -25,6 +25,7 @@
             <a href="{{ url_for('programs_page') }}" class="nav-link">Programs</a>
             <a href="{{ url_for('logout') }}" class="nav-link">Sign Out</a>
           {% else %}
+            <a href="{{ url_for('access_code') }}" class="nav-link">Redeem Code</a>
             <a href="{{ url_for('subscribe') }}" class="nav-link primary">Subscribe</a>
             <a href="{{ url_for('logout') }}" class="nav-link">Sign Out</a>
           {% endif %}

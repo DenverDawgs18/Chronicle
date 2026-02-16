@@ -7,6 +7,8 @@
     const registerModeBtn = document.getElementById('registerModeBtn');
     const passwordHint = document.getElementById('passwordHint');
     const passwordInput = document.getElementById('password');
+    const codeAction = document.getElementById('codeAction');
+    const subscribeAction = document.getElementById('subscribeAction');
 
     let isLoginMode = true;
 
@@ -20,6 +22,8 @@
       passwordInput.setAttribute('autocomplete', 'current-password');
       passwordHint.classList.remove('show');
       errorMessage.classList.remove('show');
+      if (codeAction) codeAction.style.display = '';
+      if (subscribeAction) subscribeAction.style.display = 'none';
     });
 
     registerModeBtn.addEventListener('click', () => {
@@ -32,6 +36,8 @@
       passwordInput.setAttribute('autocomplete', 'new-password');
       passwordHint.classList.add('show');
       errorMessage.classList.remove('show');
+      if (codeAction) codeAction.style.display = '';
+      if (subscribeAction) subscribeAction.style.display = '';
     });
 
     form.addEventListener('submit', async (e) => {
