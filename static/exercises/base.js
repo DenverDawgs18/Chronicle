@@ -473,7 +473,7 @@ Chronicle.utils = {
     const currentHipKneeDist = Math.abs(kneeY - hipY);
 
     if (currentHipKneeDist < 0.05 || currentHipKneeDist > 0.5) {
-      if (feedbackEl) feedbackEl.textContent = "Adjust camera so hip and knee are visible";
+      if (feedbackEl) feedbackEl.textContent = "Position camera so hip and knee are visible";
       return true;
     }
 
@@ -698,24 +698,24 @@ Chronicle.settings = {
 
 Chronicle.quality = {
   squat: function(depthInches) {
-    if (depthInches >= 17.5) return { emoji: '+++', label: 'deep', color: '#00FF00' };
-    if (depthInches >= 15.5) return { emoji: '++', label: 'good', color: '#90EE90' };
-    if (depthInches >= 6) return { emoji: '+', label: 'moderate', color: '#FFD700' };
-    return { emoji: '~', label: 'shallow', color: '#FFA500' };
+    if (depthInches >= 17.5) return { emoji: '+++', label: 'Deep', color: '#00FF00' };
+    if (depthInches >= 15.5) return { emoji: '++', label: 'Parallel', color: '#90EE90' };
+    if (depthInches >= 6) return { emoji: '+', label: 'Half', color: '#FFD700' };
+    return { emoji: '~', label: 'Shallow', color: '#FFA500' };
   },
 
   lockout: function(angleDiffFromStanding) {
-    if (angleDiffFromStanding <= 5) return { emoji: '+++', label: 'full lockout', color: '#00FF00' };
-    if (angleDiffFromStanding <= 10) return { emoji: '++', label: 'lockout', color: '#90EE90' };
-    if (angleDiffFromStanding <= 20) return { emoji: '+', label: 'moderate', color: '#FFD700' };
-    return { emoji: '~', label: 'partial', color: '#FFA500' };
+    if (angleDiffFromStanding <= 5) return { emoji: '+++', label: 'Full Lockout', color: '#00FF00' };
+    if (angleDiffFromStanding <= 10) return { emoji: '++', label: 'Lockout', color: '#90EE90' };
+    if (angleDiffFromStanding <= 20) return { emoji: '+', label: 'Partial', color: '#FFD700' };
+    return { emoji: '~', label: 'Soft Lockout', color: '#FFA500' };
   },
 
   hingeDepth: function(angleDeg) {
-    if (angleDeg >= 70) return { emoji: '+++', label: 'full ROM', color: '#00FF00' };
-    if (angleDeg >= 50) return { emoji: '++', label: 'good', color: '#90EE90' };
-    if (angleDeg >= 30) return { emoji: '+', label: 'moderate', color: '#FFD700' };
-    return { emoji: '~', label: 'shallow', color: '#FFA500' };
+    if (angleDeg >= 70) return { emoji: '+++', label: 'Full Stretch', color: '#00FF00' };
+    if (angleDeg >= 50) return { emoji: '++', label: 'Parallel', color: '#90EE90' };
+    if (angleDeg >= 30) return { emoji: '+', label: 'Partial', color: '#FFD700' };
+    return { emoji: '~', label: 'Shallow', color: '#FFA500' };
   },
 };
 
