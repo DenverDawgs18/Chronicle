@@ -528,8 +528,12 @@ Chronicle.utils = {
         }, 2000);
       }
     } else {
-      state.calibrationHipYValues = [];
-      if (feedbackEl) feedbackEl.textContent = "Too much movement - restarting calibration";
+      // Sliding window: drop the oldest frame instead of a full reset so that a single
+      // wobble doesn't force the user to start over from zero.
+      if (state.calibrationHipYValues.length > 0) {
+        state.calibrationHipYValues.shift();
+      }
+      if (feedbackEl) feedbackEl.textContent = `Hold still... ${state.calibrationHipYValues.length}/${C.CALIBRATION_SAMPLES}`;
     }
 
     return true;
