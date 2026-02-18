@@ -18,6 +18,8 @@ require('../exercises/split-squat.js');
 require('../exercises/general-squat.js');
 require('../exercises/general-lunge.js');
 require('../exercises/general-hinge.js');
+require('../exercises/press-base.js');
+require('../exercises/bench-press.js');
 require('../exercises/registry.js');
 
 // Load test framework

@@ -47,6 +47,9 @@ function initExerciseState() {
     exerciseModule = Chronicle.registry.get('squat');
     currentExercise = 'squat';
   }
+  // Sync the mobile exercise name label with the module's full name
+  const mobileNameEl = document.getElementById('mobileExerciseName');
+  if (mobileNameEl) mobileNameEl.textContent = exerciseModule.name;
 }
 
 function getUserHeightInches() {
@@ -958,6 +961,8 @@ initExerciseState();
     trackingState = Chronicle.createState();
     trackingState.getUserHeight = getUserHeightInches;
     document.title = `Chronicle - ${exerciseModule.name} Tracker`;
+    const mobileNameEl = document.getElementById('mobileExerciseName');
+    if (mobileNameEl) mobileNameEl.textContent = exerciseModule.name;
 
     // Update selector UI if button exists
     document.querySelectorAll('.exercise-option').forEach(btn => {
