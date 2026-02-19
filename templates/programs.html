@@ -10,6 +10,7 @@
 {% if current_user.is_coach %}
 <a href="{{ url_for('coach_dashboard') }}" class="nav-link">Dashboard</a>
 <a href="{{ url_for('programs_page') }}" class="nav-link primary">Programs</a>
+<a href="{{ url_for('dashboard') }}" class="nav-link">Athlete View</a>
 {% else %}
 <a href="{{ url_for('tracker') }}" class="nav-link">Tracker</a>
 <a href="{{ url_for('dashboard') }}" class="nav-link">Dashboard</a>

@@ -9,7 +9,11 @@
 
 {% block nav_links %}
 <a href="{{ url_for('index') }}" class="nav-link">Home</a>
+{% if current_user.is_authenticated %}
 <a href="{{ url_for('logout') }}" class="nav-link">Sign Out</a>
+{% else %}
+<a href="{{ url_for('login') }}" class="nav-link">Sign In</a>
+{% endif %}
 {% endblock %}
 
 {% block main_class %}page-centered{% endblock %}
@@ -20,13 +24,33 @@
     <h1>Access Code</h1>
     <p class="subtitle">Enter your code to unlock lifetime access</p>
 
+    {% if current_user.is_authenticated and current_user.subscribed and current_user.is_coach %}
+    <div class="info-box">
+      You already have coach access. You can still enter a code below if you have a different one.
+    </div>
+    {% elif current_user.is_authenticated and current_user.subscribed %}
+    <div class="info-box">
+      You already have access to Chronicle. If you have a coach code, you can enter it below to unlock coach features.
+    </div>
+    {% elif current_user.is_authenticated %}
     <div class="info-box">
       Have an access code? Enter it below to get lifetime access to Chronicle without a subscription.
     </div>
+    {% else %}
+    <div class="info-box">
+      Have an access code? You'll need to sign in or create an account first, then enter your code to unlock lifetime access.
+    </div>
+    {% endif %}
 
     {{ error_container() }}
     {{ success_container() }}
 
+    {% if not current_user.is_authenticated %}
+    <div class="auth-prompt">
+      <a href="{{ url_for('login') }}?next={{ url_for('access_code') }}" class="btn-primary auth-btn">Sign In to Redeem Code</a>
+      <p class="auth-hint">Don't have an account? You can create one on the sign in page.</p>
+    </div>
+    {% else %}
     <form id="codeForm">
       <div class="form-group">
         <label for="code">Access Code</label>
@@ -35,15 +59,23 @@
 
       {{ submit_button("Activate Access") }}
     </form>
+    {% endif %}
 
+    {% if not current_user.is_authenticated %}
+    <div class="alt-action">
+      No code? <a href="{{ url_for('subscribe') }}">Subscribe instead</a>
+    </div>
+    {% elif not current_user.subscribed %}
     <div class="alt-action">
       Don't have a code? <a href="{{ url_for('subscribe') }}">Subscribe instead</a>
     </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
+{% if current_user.is_authenticated %}
 <script>
   const form = document.getElementById('codeForm');
   const errorMessage = document.getElementById('errorMessage');
@@ -92,4 +124,5 @@
     }
   });
 </script>
+{% endif %}
 {% endblock %}

@@ -382,6 +382,9 @@ def index():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
+        next_page = request.args.get('next')
+        if next_page:
+            return redirect(next_page)
         if current_user.is_coach:
             return redirect(url_for('coach_dashboard'))
         return redirect(url_for('tracker') if current_user.subscribed else url_for('subscribe'))
@@ -390,6 +393,7 @@ def login():
         data = request.get_json()
         email = data.get('email', '').lower().strip()
         password = data.get('password', '')
+        next_page = data.get('next', '')
 
         if not email or not password:
             return jsonify({'error': 'Email and password required'}), 400
@@ -401,8 +405,10 @@ def login():
             user.last_login = datetime.utcnow()
             db.session.commit()
 
-            # Redirect coaches to coach dashboard
-            if user.is_coach:
+            # Use next parameter if provided
+            if next_page:
+                redirect_url = next_page
+            elif user.is_coach:
                 redirect_url = url_for('coach_dashboard')
             else:
                 redirect_url = url_for('dashboard') if user.subscribed else url_for('subscribe')
@@ -416,31 +422,33 @@ def login():
 def register():
     if current_user.is_authenticated:
         return redirect(url_for('tracker') if current_user.subscribed else url_for('subscribe'))
-    
+
     if request.method == 'POST':
         data = request.get_json()
         email = data.get('email', '').lower().strip()
         password = data.get('password', '')
-        
+        next_page = data.get('next', '')
+
         if not email or not password:
             return jsonify({'error': 'Email and password required'}), 400
-        
+
         if len(password) < 8:
             return jsonify({'error': 'Password must be at least 8 characters'}), 400
-        
+
         # Check if user already exists
         if User.query.filter_by(email=email).first():
             return jsonify({'error': 'Email already registered'}), 400
-        
+
         # Create new user
         user = User(email=email)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
-        
+
         login_user(user, remember=True)
-        return jsonify({'success': True, 'redirect': url_for('subscribe')})
-    
+        redirect_url = next_page if next_page else url_for('subscribe')
+        return jsonify({'success': True, 'redirect': redirect_url})
+
     # GET request - render the login page (which has register toggle)
     return render_template('login.html')
 
@@ -538,20 +546,27 @@ def update_tracker_settings():
 
 
 @app.route('/code', methods=['GET', 'POST'])
-@login_required
 def access_code():
-    # If user is already subscribed and not a coach trying coach code, redirect
-    if current_user.subscribed and current_user.is_coach:
-        return redirect(url_for('coach_dashboard'))
-    if current_user.subscribed and not current_user.is_coach:
-        return redirect(url_for('tracker'))
-
     if request.method == 'POST':
+        # POST requires authentication
+        if not current_user.is_authenticated:
+            return jsonify({'error': 'Please sign in or create an account first'}), 401
+
         data = request.get_json()
         code = data.get('code', '').strip().upper()
 
         if not code:
             return jsonify({'error': 'Code required'}), 400
+
+        # Check if user already has this access
+        if current_user.subscribed and not current_user.is_coach:
+            # Allow subscribed non-coaches to try coach code
+            if COACH_CODE and code == COACH_CODE.upper():
+                current_user.is_coach = True
+                db.session.commit()
+                print(f"✅ Coach access granted to {current_user.email} via coach code")
+                return jsonify({'success': True, 'message': 'Coach access granted!', 'redirect': url_for('coach_dashboard')})
+            return jsonify({'error': 'You already have access! This code is not valid.'}), 400
 
         # Check if code matches ACCESS_CODE (lifetime athlete access)
         if ACCESS_CODE and code == ACCESS_CODE.upper():
@@ -574,7 +589,7 @@ def access_code():
 
         return jsonify({'error': 'Invalid access code'}), 401
 
-    # GET request - render the code page
+    # GET request - render the code page (accessible to everyone)
     return render_template('code.html')
 @app.route('/setup-password', methods=['GET', 'POST'])
 def setup_password():

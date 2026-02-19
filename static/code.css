@@ -41,3 +41,22 @@
   letter-spacing: normal;
   font-weight: 400;
 }
+
+/* Auth prompt for non-signed-in users */
+.auth-prompt {
+  text-align: center;
+  margin: 24px 0;
+}
+
+.auth-btn {
+  display: inline-block;
+  text-decoration: none;
+  width: 100%;
+  text-align: center;
+}
+
+.auth-hint {
+  margin-top: 12px;
+  font-size: 0.85em;
+  color: rgba(255, 255, 255, 0.6);
+}

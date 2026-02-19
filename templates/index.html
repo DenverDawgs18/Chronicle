@@ -17,6 +17,7 @@
     <a href="{{ url_for('subscribe') }}" class="nav-link primary">Subscribe</a>
   {% endif %}
 {% else %}
+  <a href="{{ url_for('access_code') }}" class="nav-link">Redeem Code</a>
   <a href="{{ url_for('login') }}" class="nav-link">Sign In</a>
 {% endif %}
 {% endblock %}
