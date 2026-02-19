@@ -25,6 +25,7 @@
           {% if current_user.is_coach %}
             <a href="{{ url_for('coach_dashboard') }}" class="nav-link primary">Dashboard</a>
             <a href="{{ url_for('programs_page') }}" class="nav-link">Programs</a>
+            <a href="{{ url_for('dashboard') }}" class="nav-link">Athlete View</a>
             <a href="{{ url_for('logout') }}" class="nav-link">Sign Out</a>
           {% elif current_user.subscribed %}
             <a href="{{ url_for('tracker') }}" class="nav-link">Tracker</a>
@@ -37,6 +38,7 @@
             <a href="{{ url_for('logout') }}" class="nav-link">Sign Out</a>
           {% endif %}
         {% else %}
+          <a href="{{ url_for('access_code') }}" class="nav-link">Redeem Code</a>
           <a href="{{ url_for('login') }}" class="nav-link">Sign In</a>
         {% endif %}
         {% endblock %}

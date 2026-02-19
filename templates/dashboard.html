@@ -7,6 +7,9 @@
 {% endblock %}
 
 {% block nav_links %}
+{% if current_user.is_coach %}
+<a href="{{ url_for('coach_dashboard') }}" class="nav-link">Coach Dashboard</a>
+{% endif %}
 <a href="{{ url_for('tracker') }}" class="nav-link">Tracker</a>
 <a href="{{ url_for('dashboard') }}" class="nav-link primary">Dashboard</a>
 <a href="{{ url_for('programs_page') }}" class="nav-link">Programs</a>
