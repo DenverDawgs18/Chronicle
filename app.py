@@ -489,8 +489,14 @@ def tracker():
         'dumbbell-row': 'Dumbbell Row',
         'pendlay-row': 'Pendlay Row',
         'cable-row': 'Cable Row',
+        'upright-row': 'Upright Row',
         'general-pull': 'General Pull',
         'kneeling-press': 'Kneeling Press',
+        'hang-clean': 'Hang Clean',
+        'power-clean': 'Power Clean',
+        'pec-fly': 'Pec Fly',
+        'cable-fly': 'Cable Fly',
+        'general-fly': 'General Fly',
     }
     if exercise_type not in valid_exercises:
         exercise_type = 'squat'
