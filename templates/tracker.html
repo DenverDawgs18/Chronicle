@@ -50,6 +50,11 @@
       <button class="exercise-option {{ 'active' if exercise_type == 'kneeling-press' else '' }}" data-exercise="kneeling-press" onclick="setExercise('kneeling-press')" title="Kneeling OHP, Z-press, landmine press, seated OHP, etc.">Kneel</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'general-press' else '' }}" data-exercise="general-press" onclick="setExercise('general-press')" title="Incline bench, close-grip bench, dumbbell press, push-ups, etc.">Press+</button>
     </div>
+    <div class="exercise-selector-group exercise-selector-fly">
+      <button class="exercise-option {{ 'active' if exercise_type == 'pec-fly' else '' }}" data-exercise="pec-fly" onclick="setExercise('pec-fly')" title="Pec dec, machine fly">Pec Fly</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'cable-fly' else '' }}" data-exercise="cable-fly" onclick="setExercise('cable-fly')" title="Cable fly (high, mid, low)">Cable Fly</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'general-fly' else '' }}" data-exercise="general-fly" onclick="setExercise('general-fly')" title="DB fly, reverse fly, incline fly, etc.">Fly+</button>
+    </div>
     <div class="exercise-selector-group exercise-selector-row">
       <button class="exercise-option {{ 'active' if exercise_type == 'barbell-row' else '' }}" data-exercise="barbell-row" onclick="setExercise('barbell-row')" title="Barbell Row">BB Row</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'dumbbell-row' else '' }}" data-exercise="dumbbell-row" onclick="setExercise('dumbbell-row')" title="Single-arm Dumbbell Row">DB Row</button>
@@ -98,6 +103,11 @@
       <button class="exercise-option {{ 'active' if exercise_type == 'dips' else '' }}" data-exercise="dips" onclick="setExercise('dips')">Dips</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'kneeling-press' else '' }}" data-exercise="kneeling-press" onclick="setExercise('kneeling-press')">Kneel</button>
       <button class="exercise-option {{ 'active' if exercise_type == 'general-press' else '' }}" data-exercise="general-press" onclick="setExercise('general-press')">Press+</button>
+    </div>
+    <div class="exercise-selector-group">
+      <button class="exercise-option {{ 'active' if exercise_type == 'pec-fly' else '' }}" data-exercise="pec-fly" onclick="setExercise('pec-fly')">Pec Fly</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'cable-fly' else '' }}" data-exercise="cable-fly" onclick="setExercise('cable-fly')">Cable Fly</button>
+      <button class="exercise-option {{ 'active' if exercise_type == 'general-fly' else '' }}" data-exercise="general-fly" onclick="setExercise('general-fly')">Fly+</button>
     </div>
     <div class="exercise-selector-group">
       <button class="exercise-option {{ 'active' if exercise_type == 'barbell-row' else '' }}" data-exercise="barbell-row" onclick="setExercise('barbell-row')">BB Row</button>
@@ -293,6 +303,9 @@
   <script src="{{ url_for('static', filename='exercises/dips.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/kneeling-press.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/general-press.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/pec-fly.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/cable-fly.js') }}"></script>
+  <script src="{{ url_for('static', filename='exercises/general-fly.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/row-base.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/barbell-row.js') }}"></script>
   <script src="{{ url_for('static', filename='exercises/dumbbell-row.js') }}"></script>
